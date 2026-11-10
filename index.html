@@ -385,7 +385,7 @@
 
       <div class="hud-controls-help">
         <div><span>Desktop:</span> WASD Move • Left Drag Look • Right Drag Pan</div>
-        <div><span>Interaction:</span> Click Shelf to Fan • Click Book to Read</div>
+        <div><span>Interaction:</span> Touch a Shelf to Fan Out Books • Touch a Cover to Read</div>
         <div><span>WebXR / VR:</span> Trigger Raycast to Select & Turn Pages</div>
       </div>
     </header>
@@ -404,7 +404,7 @@
     </div>
 
     <!-- Shelf Hover Tooltip -->
-    <div id="shelf-tooltip" class="shelf-tooltip">Click shelf to slide books forward</div>
+    <div id="shelf-tooltip" class="shelf-tooltip">Click a shelf to fan out its books</div>
 
     <!-- Ergonomic Bottom Dock -->
     <div id="dock-wrapper" class="dock-wrapper">
@@ -413,16 +413,6 @@
       </button>
 
       <nav class="bottom-dock" aria-label="Library Navigation Controls">
-        <!-- Shelf Selector -->
-        <div class="dock-group">
-          <span class="dock-label">Shelves:</span>
-          <button class="dock-btn" data-tier="0">Top (Classics)</button>
-          <button class="dock-btn" data-tier="1">Mid (Gothic & Sci-Fi)</button>
-          <button class="dock-btn" data-tier="2">Bottom (Epics)</button>
-        </div>
-
-        <div class="dock-separator"></div>
-
         <!-- Camera / Control Mode -->
         <div class="dock-group">
           <span class="dock-label">Controls:</span>
@@ -1408,6 +1398,17 @@
       bookshelfGroup.add(shelfBoard);
       clickableShelves.push(shelfBoard);
 
+      // Invisible touch zone covering the whole shelf section, so touching anywhere
+      // on it (books, gaps, filler) counts as touching the shelf.
+      const shelfZone = new THREE.Mesh(
+        new THREE.BoxGeometry(SHELF_WIDTH, 0.5, SHELF_DEPTH - 0.05),
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      shelfZone.position.set(0, tierY + 0.25, 0);
+      shelfZone.userData = { isShelfTier: true, tierIndex: tierIndex };
+      bookshelfGroup.add(shelfZone);
+      clickableShelves.push(shelfZone);
+
       // Tier container group (houses the 4 hero books + decorative filler)
       const tierGroup = new THREE.Group();
       tierGroup.position.set(0, tierY, 0);
@@ -1766,48 +1767,126 @@
       }
     }
 
-    // --- 11. STEP 1: SHELF ACTIVATION MECHANICS ---
+    // --- 11. SHELF FAN-OUT MECHANICS (R1: one interaction) ---
+    // Touch a shelf: its books float into an arc ~1 m in front of the viewer, covers facing them.
+    // Touch a cover: open the reader. Touch the shelf again, or empty space: the books return.
     let activeShelfTierIndex = null;
+    const FAN_RADIUS = 1.0;                         // metres from the viewer to the cover face
+    const FAN_SCALE = 1.15;                         // floating covers are enlarged so titles read
+    const FAN_STEP = THREE.MathUtils.degToRad(18);  // angular spacing between covers
+    const SHELF_FRONT_Z = bookshelfGroup.position.z + SHELF_DEPTH / 2;
+    const fanHelper = new THREE.Object3D();
+    const _fanEye = new THREE.Vector3();
+    const _fanDir = new THREE.Vector3();
 
-    function activateShelfTier(tierIndex, playSound = true) {
+    function getTierBooks(tierIndex) {
+      return shelfTiers[tierIndex].children.filter(c => c.userData && c.userData.bookData);
+    }
+
+    function animateBookTo(book, pos, quat, scale, delay, ease) {
+      gsap.killTweensOf([book.position, book.scale, book.userData]);
+      const startQ = book.quaternion.clone();
+      book.userData.rotT = 0;
+      gsap.to(book.position, { x: pos.x, y: pos.y, z: pos.z, duration: 0.7, delay, ease });
+      gsap.to(book.scale, { x: scale, y: scale, z: scale, duration: 0.7, delay, ease });
+      gsap.to(book.userData, {
+        rotT: 1, duration: 0.7, delay, ease: "power2.out",
+        onUpdate: () => book.quaternion.copy(startQ).slerp(quat, book.userData.rotT)
+      });
+    }
+
+    function fanOutShelf(tierIndex) {
       if (isBookReaderOpen) return;
-
-      if (playSound) soundFX.playShelfSlide();
+      if (activeShelfTierIndex !== null && activeShelfTierIndex !== tierIndex) returnShelf(false);
+      soundFX.playShelfSlide();
       activeShelfTierIndex = tierIndex;
 
-      shelfTiers.forEach((tierGroup, idx) => {
-        const isCurrent = idx === tierIndex;
-        tierGroup.userData.isActivated = isCurrent;
+      camera.getWorldPosition(_fanEye);
+      camera.getWorldDirection(_fanDir);
+      const heading = Math.atan2(_fanDir.x, _fanDir.z);
+      const centerY = Math.max(_fanEye.y - 0.1, 1.0);
 
-        // Slide the 4 hero books on this shelf outward along Z in a staggered arc
-        tierGroup.children.forEach((child, bIdx) => {
-          if (child.userData && child.userData.bookData) {
-            const targetZ = isCurrent ? 0.38 : 0.0;
-            const targetY = isCurrent ? 0.04 : 0.0;
-            const targetRotX = isCurrent ? 0.08 : 0.0;
+      const tierGroup = shelfTiers[tierIndex];
+      tierGroup.updateWorldMatrix(true, false);
+      const parentInvQ = tierGroup.getWorldQuaternion(new THREE.Quaternion()).invert();
+      const parentScale = tierGroup.getWorldScale(new THREE.Vector3()).x;
 
-            gsap.to(child.position, {
-              z: targetZ,
-              y: targetY,
-              duration: 0.65,
-              delay: bIdx * 0.06,
-              ease: isCurrent ? "back.out(1.5)" : "power2.inOut"
-            });
+      getTierBooks(tierIndex).forEach((book, i) => {
+        const slot = book.userData.bookData.shelfPosition; // 0 = leftmost
+        const a = heading + (1.5 - slot) * FAN_STEP;
+        const r = FAN_RADIUS + (BOOK_D / 2) * FAN_SCALE; // book origin sits half a book-depth behind the cover
+        const world = new THREE.Vector3(
+          _fanEye.x + r * Math.sin(a),
+          centerY - (BOOK_H / 2) * FAN_SCALE,
+          _fanEye.z + r * Math.cos(a)
+        );
+        // If the viewer stands very close to the case, keep covers out of the shelf
+        if (_fanEye.z > SHELF_FRONT_Z) world.z = Math.max(world.z, SHELF_FRONT_Z + 0.3);
 
-            gsap.to(child.rotation, {
-              x: targetRotX,
-              duration: 0.65,
-              delay: bIdx * 0.06,
-              ease: "power2.out"
-            });
-          }
-        });
+        // Face the viewer, staying upright
+        fanHelper.position.copy(world);
+        fanHelper.lookAt(_fanEye.x, world.y, _fanEye.z);
+        const localQ = parentInvQ.clone().multiply(fanHelper.quaternion);
+        const localPos = tierGroup.worldToLocal(world.clone());
+
+        book.userData.isExtruded = true;
+        animateBookTo(book, localPos, localQ, FAN_SCALE / parentScale, i * 0.06, "back.out(1.4)");
       });
+    }
 
-      // Update HUD shelf buttons
-      document.querySelectorAll('[data-tier]').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.tier) === tierIndex);
+    function returnShelf(playSound = true) {
+      if (activeShelfTierIndex === null) return;
+      if (playSound) soundFX.playShelfSlide();
+      const tierIndex = activeShelfTierIndex;
+      activeShelfTierIndex = null;
+      const restQ = new THREE.Quaternion();
+      getTierBooks(tierIndex).forEach((book, i) => {
+        book.visible = true;
+        book.userData.isExtruded = false;
+        animateBookTo(
+          book,
+          { x: book.userData.restingX, y: 0, z: book.userData.restingZ },
+          restQ, 1, i * 0.04, "power2.inOut"
+        );
       });
+    }
+
+    function toggleShelf(tierIndex) {
+      if (activeShelfTierIndex === tierIndex) returnShelf();
+      else fanOutShelf(tierIndex);
+    }
+
+    // The fanned covers share space with the reader, so hide them while a book is open
+    function setFanVisible(visible) {
+      if (activeShelfTierIndex === null) return;
+      getTierBooks(activeShelfTierIndex).forEach(b => { b.visible = visible; });
+    }
+
+    // Shared by mouse and VR controllers: what is under this ray?
+    // Returns { type: 'book', group } (a floating cover), { type: 'shelf', tierIndex }, or null.
+    function findTouchTarget(rc) {
+      const hits = rc.intersectObjects([...clickableBooks, ...clickableShelves], true);
+      for (const h of hits) {
+        const ud = h.object.userData;
+        if (ud.parentBookGroup) {
+          const g = ud.parentBookGroup;
+          if (g.userData.isExtruded) return { type: 'book', group: g };
+          return { type: 'shelf', tierIndex: g.userData.tierIndex }; // resting book = touching its shelf
+        }
+        if (ud.isShelfTier) return { type: 'shelf', tierIndex: ud.tierIndex };
+      }
+      return null;
+    }
+
+    function handleSceneTouch(rc) {
+      const target = findTouchTarget(rc);
+      if (target && target.type === 'book') {
+        selectAndOpenBook(target.group.userData.bookData);
+      } else if (target && target.type === 'shelf') {
+        toggleShelf(target.tierIndex);
+      } else {
+        returnShelf(); // empty space
+      }
     }
 
     // --- 12. STEP 2: BOOK SELECTION & ZOOM TO EYE LEVEL ---
@@ -1818,6 +1897,7 @@
       activePageIndex = 0;
 
       soundFX.playChime();
+      setFanVisible(false);
 
       // Dampen background lighting for reading intimacy
       gsap.to(ambientLight, { intensity: 0.15, duration: 0.8 });
@@ -1875,6 +1955,7 @@
           flipbookRig.scale.set(1, 1, 1);
           isBookReaderOpen = false;
           activeBook = null;
+          setFanVisible(true);
         }
       });
 
@@ -1936,21 +2017,20 @@
       // Check hovers when reader is closed
       if (!isBookReaderOpen) {
         raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects([...clickableBooks, ...clickableShelves], true);
+        const target = findTouchTarget(raycaster);
         const tooltip = document.getElementById('shelf-tooltip');
 
-        if (intersects.length > 0) {
-          const hit = intersects[0].object;
+        if (target) {
           document.body.style.cursor = 'pointer';
-
-          if (hit.userData.isShelfTier) {
-            tooltip.textContent = `🏛️ Shelf Tier ${hit.userData.tierIndex + 1} — Click to slide books out`;
-            tooltip.classList.add('active');
-          } else if (hit.userData.parentBookGroup) {
-            const b = hit.userData.parentBookGroup.userData.bookData;
+          if (target.type === 'book') {
+            const b = target.group.userData.bookData;
             tooltip.textContent = `📖 ${b.title} (${b.author}) — Click to read`;
-            tooltip.classList.add('active');
+          } else {
+            tooltip.textContent = activeShelfTierIndex === target.tierIndex
+              ? '🏛️ Click to return the books'
+              : '🏛️ Click to fan out these books';
           }
+          tooltip.classList.add('active');
         } else {
           document.body.style.cursor = 'default';
           tooltip.classList.remove('active');
@@ -1958,9 +2038,16 @@
       }
     }
 
+    // A drag (orbit / look-around) ends in a click event too; ignore it so looking around
+    // does not collapse the fan.
+    let pointerDownPos = null;
+    window.addEventListener('pointerdown', (e) => { pointerDownPos = { x: e.clientX, y: e.clientY }; });
+
     function onPointerClick(event) {
       // Prevent canvas raycasting when clicking HUD overlay elements
       if (event.target !== canvas) return;
+      if (pointerDownPos && !isFpsMode &&
+          Math.hypot(event.clientX - pointerDownPos.x, event.clientY - pointerDownPos.y) > 6) return;
 
       if (isFpsMode) {
         mouse.x = 0;
@@ -1986,22 +2073,7 @@
         return;
       }
 
-      // Raycast against shelves & books
-      const intersects = raycaster.intersectObjects([...clickableBooks, ...clickableShelves], true);
-      if (intersects.length > 0) {
-        const hit = intersects[0].object;
-
-        if (hit.userData.isShelfTier) {
-          activateShelfTier(hit.userData.tierIndex);
-        } else if (hit.userData.parentBookGroup) {
-          const parentGroup = hit.userData.parentBookGroup;
-          // If shelf is not activated yet, activate it first
-          if (activeShelfTierIndex !== parentGroup.userData.tierIndex) {
-            activateShelfTier(parentGroup.userData.tierIndex);
-          }
-          selectAndOpenBook(parentGroup.userData.bookData);
-        }
-      }
+      handleSceneTouch(raycaster);
     }
 
     window.addEventListener('pointermove', onPointerMove);
@@ -2053,32 +2125,13 @@
         return;
       }
 
-      const hits = xrRaycaster.intersectObjects([...clickableBooks, ...clickableShelves], true);
-      if (hits.length > 0) {
-        const hit = hits[0].object;
-        if (hit.userData.isShelfTier) {
-          activateShelfTier(hit.userData.tierIndex);
-        } else if (hit.userData.parentBookGroup) {
-          const parentGroup = hit.userData.parentBookGroup;
-          if (activeShelfTierIndex !== parentGroup.userData.tierIndex) {
-            activateShelfTier(parentGroup.userData.tierIndex);
-          }
-          selectAndOpenBook(parentGroup.userData.bookData);
-        }
-      }
+      handleSceneTouch(xrRaycaster);
     }
 
     controller0.addEventListener('selectstart', handleXRTriggerSelect);
     controller1.addEventListener('selectstart', handleXRTriggerSelect);
 
     // --- 15. DOM UI EVENT LISTENERS ---
-    // Shelf buttons in bottom dock
-    document.querySelectorAll('[data-tier]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        activateShelfTier(parseInt(btn.dataset.tier));
-      });
-    });
-
     // Reader UI buttons
     document.getElementById('btn-prev-page').addEventListener('click', () => flipPage(false));
     document.getElementById('btn-next-page').addEventListener('click', () => flipPage(true));
@@ -2185,11 +2238,6 @@
 
     // Start WebXR-ready render loop
     renderer.setAnimationLoop(renderLoop);
-
-    // Initial shelf activation (reveal Victorian classics on start)
-    setTimeout(() => {
-      activateShelfTier(0, false);
-    }, 500);
 
     console.log("🏛️ Alexandria VR 3D Library successfully initialized with WebXR, Three.js, and GSAP.");
   </script>
