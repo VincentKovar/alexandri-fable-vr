@@ -66,7 +66,7 @@ src/library/            typed, unit-tested book data + pagination logic (mirror 
 | R2 | Real covers with generated fallback | Done, 12 of 12 verified over HTTP |
 | R3 | Cozy room | Done, verified on desktop. World Labs Marble backdrop (stretch) not attempted |
 | R4 | Remove atmosphere presets | Done |
-| R5 | Fix plaques | Done |
+| R5 | Fix plaques | Superseded: the shelf labels were removed entirely (they did not match the books on each shelf) |
 | R6 | VR teleport | Built, logic tested on desktop with a simulated controller. **Not tested on a headset** |
 | R7 | Housekeeping | Done (this commit) |
 
@@ -75,7 +75,7 @@ src/library/            typed, unit-tested book data + pagination logic (mirror 
 | # | Test | Result |
 |---|---|---|
 | 1 | 360° from spawn never shows a black void | **Pass.** 36 views (12 headings × 3 pitches): at most 0.9% near-black pixels in any view |
-| 2 | Plaque labels fully readable | **Pass** (checked visually, all three; text is fitted with `measureText` to 88% of the plaque width) |
+| 2 | Plaque labels fully readable | **No longer applies.** Labels removed after iteration 2 (see below) |
 | 3 | At least 10 of 12 image covers | **Pass.** 12 of 12 |
 | 4 | Shelf, then cover, then open in two actions | **Pass.** Two real clicks opened a book; no extra buttons |
 | 5 | Teleport to each bookcase and open a book in a Quest browser | **Not run.** Needs a headset |
@@ -120,9 +120,14 @@ Built in the spec's order, one commit per step: plaques and presets, interaction
 - **Walking into the bookcase.** The desktop camera can no longer pass through the bookcase.
 - **Reader drop cap.** The drop cap no longer overlaps the third line, and a chapter heading is drawn as a heading instead of receiving the drop cap. Pages that open with a date or number (Dracula) get no drop cap.
 
+**Changes after the prototype review (2026-11-10)**
+
+- **Shelf labels removed.** "Victorian Novels", "Gothic & Speculative" and "World Classics" did not describe the books on those shelves, so the plaques are gone. Shelf grouping returns in a later phase, driven by real metadata (see `docs/PRD.md`).
+- **Fuller pages.** Each page held about one paragraph (about 60 words). Each book now carries about 2,000 to 3,300 words of its real opening from Project Gutenberg (`books/excerpts.js`), paginated at runtime to fill each page (about 250 to 350 words). If that file is missing the old short pages are used.
+
 **Known issues and open items**
 
-- **Short excerpts by design.** Each book is a 4-page excerpt (Frankenstein 6). Full-length reading is iteration 3.
+- **Excerpts, not full books.** Each book is an opening excerpt of 7 to 12 pages. Full-length reading is a later phase.
 
 - **Quest 2 is untested:** frame rate, teleport on device (the thumbstick is assumed to be `axes[2]`/`axes[3]`), and how the arc line looks in the headset.
 - **Blank first load:** the iteration 1 screenshot `r1-desktop.png` showed an empty canvas. It could not be reproduced in this iteration (every load rendered); the screenshot is gone with `.aistudio/`. Worth checking on a clean browser profile.

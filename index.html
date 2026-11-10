@@ -16,6 +16,7 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
+  <script src="books/excerpts.js"></script>
 
   <style>
     :root {
@@ -1659,42 +1660,6 @@
       tierGroup.userData = { tierIndex: tierIndex, isActivated: false };
       bookshelfGroup.add(tierGroup);
       shelfTiers.push(tierGroup);
-
-      // Gold brass tier label plaque
-      const plaqueCanvas = document.createElement('canvas');
-      // Canvas aspect (512x110 = 4.65) matches the 0.65 x 0.14 plane so text is not stretched.
-      plaqueCanvas.width = 512;
-      plaqueCanvas.height = 110;
-      const pctx = plaqueCanvas.getContext('2d');
-      const tierNames = ["I. VICTORIAN NOVELS", "II. GOTHIC & SPECULATIVE", "III. WORLD CLASSICS"];
-      // Draw the label, shrinking the font until the text fits with a margin.
-      // Redrawn once web fonts load, since measureText depends on the real font.
-      const drawPlaque = () => {
-        const maxTextWidth = plaqueCanvas.width * 0.88;
-        pctx.fillStyle = '#b8860b';
-        pctx.fillRect(0, 0, plaqueCanvas.width, plaqueCanvas.height);
-        pctx.fillStyle = '#1a0f08';
-        pctx.textAlign = 'center';
-        pctx.textBaseline = 'middle';
-        let fontSize = 56;
-        pctx.font = `bold ${fontSize}px "Cinzel", Georgia, serif`;
-        while (pctx.measureText(tierNames[tierIndex]).width > maxTextWidth && fontSize > 12) {
-          fontSize -= 2;
-          pctx.font = `bold ${fontSize}px "Cinzel", Georgia, serif`;
-        }
-        pctx.fillText(tierNames[tierIndex], plaqueCanvas.width / 2, plaqueCanvas.height / 2);
-      };
-      drawPlaque();
-      const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
-      if (document.fonts && document.fonts.ready) {
-        document.fonts.ready.then(() => { drawPlaque(); plaqueTex.needsUpdate = true; });
-      }
-      const plaqueMat = new THREE.MeshBasicMaterial({ map: plaqueTex });
-      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.65, 0.14), plaqueMat);
-      plaque.position.set(0, tierY - 0.04, SHELF_DEPTH / 2 + 0.01);
-      plaque.userData = { isShelfTier: true, tierIndex: tierIndex };
-      bookshelfGroup.add(plaque);
-      clickableShelves.push(plaque);
     });
 
     // --- 8. INSTANCED DECORATIVE BOOKS (High Performance 90 FPS VR Spines) ---
@@ -1775,6 +1740,60 @@
         undefined,
         () => console.warn(`[covers] No image cover for "${bookData.title}"; using generated cover.`)
       );
+    }
+
+    // Fill every page. books/excerpts.js holds each book's opening text; it is paginated here with
+    // the same font, width and line height the page renderer uses, so a page holds as much text as
+    // fits and nothing runs off the bottom. If the file is missing, the short built-in pages are used.
+    function paginateExcerpt(ex) {
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = '19px "Georgia", serif';
+      const WIDTH = 580, LINE = 28, TOP = 130, LAST_BASELINE = 925;
+      const wrap = (text) => {
+        const words = text.split(' ');
+        const lines = [];
+        let line = '';
+        for (let w = 0; w < words.length; w++) {
+          const test = line + words[w] + ' ';      // same test the renderer uses
+          if (ctx.measureText(test).width > WIDTH && w > 0 && line) { lines.push(line.trim()); line = words[w] + ' '; }
+          else line = test;
+        }
+        if (line.trim()) lines.push(line.trim());
+        return lines;
+      };
+      const pages = [];
+      let parts = [ex.heading];
+      let y = TOP + 62;
+      let limit = LAST_BASELINE - LINE;            // page 1: keep a line spare for the drop-cap wrap
+      const queue = ex.paragraphs.slice();
+      const flush = () => { pages.push(parts.join('\n\n')); parts = []; y = TOP; limit = LAST_BASELINE; };
+      while (queue.length) {
+        const text = queue.shift();
+        const lines = wrap(text);
+        const fit = y > limit ? 0 : Math.floor((limit - y) / LINE) + 1;
+        if (lines.length <= fit) {
+          parts.push(text);
+          y += (lines.length - 1) * LINE + 36;
+          continue;
+        }
+        let take = fit;
+        if (lines.length - take === 1) take -= 1;   // never leave a one-line widow
+        if (take >= 2) {
+          parts.push(lines.slice(0, take).join(' '));
+          queue.unshift(lines.slice(take).join(' '));
+        } else {
+          queue.unshift(text);
+        }
+        flush();
+      }
+      if (parts.length) pages.push(parts.join('\n\n'));
+      return pages;
+    }
+    if (window.BOOK_EXCERPTS) {
+      GUTENBERG_LIBRARY.forEach((b) => {
+        const ex = window.BOOK_EXCERPTS[b.id];
+        if (ex && ex.paragraphs && ex.paragraphs.length) b.pages = paginateExcerpt(ex);
+      });
     }
 
     GUTENBERG_LIBRARY.forEach((bookData) => {
