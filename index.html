@@ -2202,6 +2202,7 @@
     // --- 12. STEP 2: BOOK SELECTION & ZOOM TO EYE LEVEL ---
     function selectAndOpenBook(bookData) {
       if (isBookReaderOpen) return;
+      releaseLockForReader();   // the reader's buttons need a usable mouse cursor
       isBookReaderOpen = true;
       activeBook = bookData;
       activePageIndex = 0;
@@ -2310,6 +2311,7 @@
     let hoveredObject = null;
 
     function onPointerMove(event) {
+      if (renderer.xr.isPresenting) return;
       if (event.target !== canvas && !pointerLockControls.isLocked) {
         const tooltip = document.getElementById('shelf-tooltip');
         if (tooltip) tooltip.classList.remove('active');
@@ -2354,8 +2356,10 @@
     window.addEventListener('pointerdown', (e) => { pointerDownPos = { x: e.clientX, y: e.clientY }; });
 
     function onPointerClick(event) {
-      // Prevent canvas raycasting when clicking HUD overlay elements
-      if (event.target !== canvas) return;
+      // Prevent canvas raycasting when clicking HUD overlay elements. While the mouse is locked the
+      // browser delivers clicks to <body> (not the canvas), so those must be let through.
+      if (renderer.xr.isPresenting) return;     // in a headset, controllers do the picking
+      if (event.target !== canvas && !pointerLockControls.isLocked) return;
       if (pointerDownPos && !pointerLockControls.isLocked &&
           Math.hypot(event.clientX - pointerDownPos.x, event.clientY - pointerDownPos.y) > 6) return;
 
@@ -2677,6 +2681,15 @@
       tip.classList.add('active');
       setTimeout(() => tip.classList.remove('active'), 5000);
     }
+    let releasingForReader = false;
+    function releaseLockForReader() {
+      if (!pointerLockControls.isLocked) return;
+      releasingForReader = true;
+      fpsLockless = true;                 // keep FPS walking, but with a normal cursor
+      crosshair.classList.remove('active');
+      pointerLockControls.unlock();
+      showHint('Mouse released for reading. Press FPS Walk to capture it again.');
+    }
     function exitFpsMode() {
       fpsRequested = false;
       fpsLockless = false;
@@ -2686,7 +2699,7 @@
       setFpsUI(false, false);
     }
     function enterLocklessFps() {
-      if (isFpsMode) return;
+      if (isFpsMode) { fpsRequested = false; return; }
       fpsRequested = false;
       fpsLockless = true;
       isFpsMode = true;
@@ -2704,7 +2717,7 @@
     });
 
     btnFps.addEventListener('click', () => {
-      if (isFpsMode) return;
+      if (isFpsMode && !fpsLockless) return;   // already captured; a free-cursor FPS may re-capture
       fpsRequested = true;
       pointerLockControls.lock(); // 'lock' (success) or 'pointerlockerror' (failure) follows
       // Some browsers reject without firing an event, so also check after a moment
@@ -2713,11 +2726,15 @@
 
     pointerLockControls.addEventListener('lock', () => {
       fpsRequested = false;
+      fpsLockless = false;
       isFpsMode = true;
       orbitControls.enabled = false;
       setFpsUI(true, true);
     });
-    pointerLockControls.addEventListener('unlock', exitFpsMode);
+    pointerLockControls.addEventListener('unlock', () => {
+      if (releasingForReader) { releasingForReader = false; return; }   // reader opened: stay in FPS
+      exitFpsMode();
+    });
     document.addEventListener('pointerlockerror', () => { if (fpsRequested) enterLocklessFps(); });
 
     // Drag-to-look for the lockless fallback
@@ -2786,7 +2803,7 @@
         pointerLockControls.moveForward(moveVelocity.z * dt);
         pointerLockControls.moveRight(moveVelocity.x * dt);
         camera.position.y = 1.6; // Keep steady eye height
-      } else if (!renderer.xr.isPresenting) {
+      } else if (!renderer.xr.isPresenting && !isFpsMode) {
         orbitControls.update();
       }
 

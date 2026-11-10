@@ -116,6 +116,7 @@ Built in the spec's order, one commit per step: plaques and presets, interaction
 **Fixes after first hands-on use (2026-11-10)**
 
 - **FPS Walk could get stuck.** The mode switched on before the browser granted mouse lock, and a failed lock left clicks forced to the screen centre (so only the centre shelf and Dracula could be picked). The mode now turns on only after the lock succeeds. Where mouse lock is unavailable (embedded browsers, some iframes) it falls back to drag-to-look with a normal pointer.
+- **Real mouse lock broke clicks and the reader.** With a genuine pointer lock the browser delivers clicks to the page body, which the click handler ignored, and the reader's buttons cannot be clicked while the mouse is captured. Clicks are now accepted while locked, opening a book releases the mouse (FPS stays on, with a normal cursor), and mouse picking is ignored while in a headset session.
 - **Walk speed.** Movement was tied to frame rate (about 17 m/s on a fast display). It is now 2.4 m/s at any frame rate.
 - **Walking into the bookcase.** The desktop camera can no longer pass through the bookcase.
 - **Reader drop cap.** The drop cap no longer overlaps the third line, and a chapter heading is drawn as a heading instead of receiving the drop cap. Pages that open with a date or number (Dracula) get no drop cap.
