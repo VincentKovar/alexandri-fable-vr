@@ -126,13 +126,35 @@ Built in the spec's order, one commit per step: plaques and presets, interaction
 - **Shelf labels removed.** "Victorian Novels", "Gothic & Speculative" and "World Classics" did not describe the books on those shelves, so the plaques are gone. Shelf grouping returns in a later phase, driven by real metadata (see `docs/PRD.md`).
 - **Fuller pages.** Each page held about one paragraph (about 60 words). Each book now carries about 2,000 to 3,300 words of its real opening from Project Gutenberg (`books/excerpts.js`), paginated at runtime to fill each page (about 250 to 350 words). If that file is missing the old short pages are used.
 
+**Planned next: flat reader (decided 2026-11-10, not built yet)**
+
+Today the opened book is a tilted 3D object, which skews the pages and the text. The plan is for an opened book to read like iPad or Apple Books: flat to the screen, squared to the viewer.
+
+- **Flat, square-on pages.** A short 3D transition brings the book from the shelf to the viewer ("semi-3D"), then it settles flat with no tilt or perspective skew. Two pages side by side on wide windows, one page on narrow ones.
+- **No overlap with the menus.** The book is sized to fit the free area between the reader menu at the top and the dock at the bottom, with a margin, and re-fits when the window is resized or the dock is collapsed.
+- **Remove the 3D "Return to shelf" plate above the book.** It duplicates the Return button in the top menu. Esc still closes the reader. **Do not remove it for VR until a VR replacement exists** (see the concerns below).
+- **Flat page-turn animation** in place of the 3D flip.
+
+**Concerns for the VR version of the flat reader**
+
+1. **The menu is HTML, which a headset cannot show.** In an immersive session only 3D objects are visible. Prev, Next, View on Gutenberg and Return exist only in the HTML menu, so today the 3D plate above the book (and clicking the pages) is the only way to close and flip in VR. Removing the plate would strand VR users. Add VR-native controls first: for example a controller button to close, thumbstick left/right to flip, and small 3D buttons below the page (at least about 4 cm so a controller ray can hit them). Show them only in a headset.
+2. **Where the flat page lives.** A page locked to the head is uncomfortable. Place it in the world once when the book opens (about 1.0 to 1.5 m away, facing the viewer, at a comfortable height for seated or standing), and offer a way to re-summon it after the viewer moves or teleports.
+3. **Legibility.** Flat, square-on text should be sharper than the tilted version, but the current 768 by 1024 page texture at 19 px is still unproven in a headset. Expect to need a higher-resolution texture or SDF text, a larger font, and a one-page mode in VR. Test on a Quest 2 before choosing.
+4. **Two sizing systems.** On desktop the book fits the browser window; in VR there is no window, so it needs a fixed physical size in metres. Plan for both modes in one layout function.
+5. **One reader, not two.** Avoid an HTML reader on desktop and a textured-plane reader in VR that drift apart. Use the textured-plane reader everywhere and keep HTML only for the desktop menu.
+6. **Page-turn cost.** Redrawing larger page textures on every flip can cause a frame hitch at 72 fps. Pre-render the next and previous pages.
+7. **Less sense of a physical book.** A flat page loses depth cues. Keep the opening transition, a soft shadow and a hint of page edge so it still feels like a book.
+8. **Dimmed room.** Reading mode dims the room lights. Keep the page unlit so its text stays crisp and independent of the room lighting, and check how the dimming looks in the headset.
+
+See `docs/PRD.md` (section 7.3 and Phase 0b).
+
 **Known issues and open items**
 
 - **Excerpts, not full books.** Each book is an opening excerpt of 7 to 12 pages. Full-length reading is a later phase.
 
 - **Quest 2 is untested:** frame rate, teleport on device (the thumbstick is assumed to be `axes[2]`/`axes[3]`), and how the arc line looks in the headset.
 - **Blank first load:** the iteration 1 screenshot `r1-desktop.png` showed an empty canvas. It could not be reproduced in this iteration (every load rendered); the screenshot is gone with `.aistudio/`. Worth checking on a clean browser profile.
-- **`images/NY-rose-readingroom.png` is still an empty file** and needs re-uploading. The reference photos are style guidance only and are not used in the scene.
+- **Reference photos.** `images/NY-rose-readingroom.png` has now been uploaded to the repo (it was an empty file). The photos are style guidance only and are not used in the scene.
 - **`package.json` is still the AI Studio scaffold** (name `react-example`; React, Tailwind, Express and `@google/genai` dependencies). `index.html` uses none of them. `.env.example`, `metadata.json` and `vite.config.ts` also carry AI Studio and Gemini text. Pruning these would be a good small cleanup.
 - **`src/library/reader-logic.ts` is not used by `index.html`.** It is a typed copy of the book data, kept because it has unit tests.
 - **Cover art:** the covers come from Project Gutenberg's generated cover pages. Check their terms before publishing the project publicly.

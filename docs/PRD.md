@@ -108,12 +108,27 @@ Priority: **P0** = required for the phase that introduces it, **P1** = should ha
 
 ### 7.3 Reader (core)
 
+- **P0** **Flat reader (decided 2026-11-10).** An opened book is shown flat and square to the viewer, like iPad or Apple Books, with no tilt or perspective skew on the pages or text. A short 3D transition from the shelf keeps the experience semi-3D. Two pages on wide windows, one on narrow ones.
+- **P0** The book never overlaps the reader menu (top) or the dock (bottom): it is sized to the free area between them with a margin and re-fits on resize and when the dock is collapsed.
+- **P0** Remove the 3D "Return to shelf" plate above the book (duplicate of the menu's Return button; Esc also closes). In VR it must be replaced by VR-native controls first (see the VR concerns below).
+- **P0** Flat page-turn animation.
 - **P0** Real pagination of full-length text that fills each page (today's runtime paginator is the starting point).
 - **P0** Resume where you left off and bookmarks, stored locally.
 - **P0** Reading comfort: adjustable text size, higher-resolution page text for VR (today's 768 by 1024 canvas at 19 px is likely too soft in a headset and must be tested), chapter navigation.
 - **P1** EPUB support for DRM-free files (spine, chapters, basic styling, images). PDF is out of scope initially.
 - **P1** Night mode and a distraction-free mode.
 - **P2** Highlights and notes.
+
+**Concerns for the flat reader in VR**
+
+1. The reader menu is HTML and is not visible in an immersive session; today the 3D plate above the book is the only VR exit. VR-native controls (controller button to close, thumbstick to flip, 3D buttons of at least about 4 cm) must exist before the plate is removed.
+2. The flat page should be placed in the world when the book opens (about 1.0 to 1.5 m away, facing the viewer), not locked to the head, with a re-summon option.
+3. Text legibility at 768 by 1024 is unproven in a headset: plan for a higher-resolution texture or SDF text, larger type and a one-page VR mode; test on a Quest 2.
+4. Desktop fits the browser window; VR needs a fixed physical size in metres. One layout function, two modes.
+5. Use one textured-plane reader for desktop and VR; keep HTML only for the desktop menu.
+6. Pre-render the next and previous pages to avoid frame hitches at 72 fps.
+7. Keep a soft shadow, page edge and the opening transition so the book still feels physical.
+8. Keep the page unlit so it is unaffected by the dimmed reading lights; check the dimming in the headset.
 
 ### 7.4 Navigation and platform (core)
 
@@ -175,9 +190,19 @@ Each phase is independently useful and ends at a **stop point** where the repo w
 *Why first:* nearly every later decision (text size, scene budget, teleport feel) depends on facts we do not have yet.
 
 - Run the 7 iteration 2 acceptance tests that need a person or headset: Quest teleport to each bookcase and open a book (5), cold-start stranger under 60 seconds (6), 72 fps on Quest 2 (7).
-- Check page text legibility in the headset at today's resolution.
+- Check page text legibility in the headset (with the flat reader from Phase 0b).
 - Replace the `package.json` AI Studio scaffold with a minimal, honest one; remove unused config.
 - **Exit:** a short test report with measured fps, a legibility verdict, and a list of fixes. **Stop point:** the prototype is a trusted baseline.
+
+### Phase 0b: Flat reader (S to M)
+
+*Planned for the next session.* Do this before the headset legibility check in Phase 0, so the headset test measures the reader we intend to ship.
+
+- Flat, square-on book with a short 3D transition; two pages wide, one page narrow (7.3).
+- Fit the book between the top reader menu and the bottom dock with a margin, with no overlap, including on resize and when the dock is collapsed.
+- Remove the 3D "Return to shelf" plate above the book. In the same change add VR-native close and flip controls (controller button, thumbstick, 3D buttons shown only in a headset), so VR users are not stranded.
+- Flat page-turn animation; pre-render neighbouring pages.
+- **Exit:** the reader is flat on desktop with nothing overlapping, and in VR the book can be opened, flipped and closed with a controller. **Stop point:** a reader worth testing on the headset.
 
 ### Phase 1: Data-driven room (M)
 
