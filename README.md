@@ -9,7 +9,7 @@ A cozy, walkable 3D library you can enter on desktop or in a VR headset (WebXR).
 **Current scope:** one cozy room, one interaction flow, 12 Project Gutenberg books with real covers, VR teleport.
 **Out of scope (iteration 3):** Calibre export, 300+ books, multiple bookcases, search, full-length reading, multiple rooms or moods.
 
-The full iteration 2 spec is in [docs/iteration-2-spec.md](docs/iteration-2-spec.md).
+The full iteration 2 spec is in [docs/iteration-2-spec.md](docs/iteration-2-spec.md). Where the project is going (personal library and branded storefront) and the phased roadmap are in [docs/PRD.md](docs/PRD.md).
 
 ## Run it locally
 
