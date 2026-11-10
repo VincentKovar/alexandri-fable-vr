@@ -386,7 +386,7 @@
       <div class="hud-controls-help">
         <div><span>Desktop:</span> WASD Move • Left Drag Look • Right Drag Pan</div>
         <div><span>Interaction:</span> Touch a Shelf to Fan Out Books • Touch a Cover to Read</div>
-        <div><span>WebXR / VR:</span> Trigger Raycast to Select & Turn Pages</div>
+        <div><span>WebXR / VR:</span> Thumbstick Forward to Teleport • Trigger to Touch</div>
       </div>
     </header>
 
@@ -1173,6 +1173,12 @@
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.set(0, 1.6, 2.6); // Default eye level in front of bookcase
+
+    // VR rig (R6): the camera and controllers live in a "dolly" so teleporting moves the dolly.
+    // On desktop the dolly stays at the origin, so Orbit and WASD behave exactly as before.
+    const dolly = new THREE.Group();
+    dolly.add(camera);
+    scene.add(dolly);
 
     // WebGL Renderer Setup with WebXR enabled
     const renderer = new THREE.WebGLRenderer({
@@ -2351,7 +2357,7 @@
     // --- 14. WEBXR / VR CONTROLLER RAYCASTER & INTERACTION ---
     const controller0 = renderer.xr.getController(0);
     const controller1 = renderer.xr.getController(1);
-    scene.add(controller0, controller1);
+    dolly.add(controller0, controller1);
 
     // Visual Ray Pointer line extending from VR controllers
     function buildControllerRay() {
@@ -2399,6 +2405,198 @@
 
     controller0.addEventListener('selectstart', handleXRTriggerSelect);
     controller1.addEventListener('selectstart', handleXRTriggerSelect);
+
+    // --- 14b. VR LOCOMOTION: TELEPORT (R6) ---
+    // Push a thumbstick forward to aim an arc, release to teleport. Desktop keeps Orbit + WASD.
+    const controllers = [controller0, controller1];
+    controllers.forEach(c => {
+      c.addEventListener('connected', (e) => { c.userData.inputSource = e.data; });
+      c.addEventListener('disconnected', () => { c.userData.inputSource = null; });
+    });
+
+    // Where the viewer may stand: inside the room, in front of the bookcase, clear of furniture.
+    const TELEPORT_BOUNDS = { xMin: -3.5, xMax: 3.5, zMin: -1.0, zMax: 4.1 };
+    const TELEPORT_BLOCK_CIRCLES = [
+      { x: -2.3, z: 2.3, r: 0.75 },   // armchair
+      { x: -2.95, z: 3.25, r: 0.45 }  // side table + lamp
+    ];
+    const TELEPORT_BLOCK_RECTS = [
+      { x0: -4.0, x1: -3.0, z0: -0.4, z1: 2.4 }, // fireplace hearth
+      { x0: 3.3, x1: 4.0, z0: -0.4, z1: 1.4 }    // window seat
+    ];
+    function isTeleportSpotValid(x, z) {
+      const B = TELEPORT_BOUNDS;
+      if (x < B.xMin || x > B.xMax || z < B.zMin || z > B.zMax) return false;
+      if (TELEPORT_BLOCK_CIRCLES.some(c => Math.hypot(x - c.x, z - c.z) < c.r)) return false;
+      if (TELEPORT_BLOCK_RECTS.some(r => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1)) return false;
+      return true;
+    }
+
+    // Parabolic arc from a controller to the floor
+    const TP_SPEED = 7, TP_GRAVITY = 9.8, TP_STEPS = 36, TP_DT = 0.03;
+    const arcPoints = Array.from({ length: TP_STEPS + 1 }, () => new THREE.Vector3());
+    const _tpOrigin = new THREE.Vector3();
+    const _tpDir = new THREE.Vector3();
+    const _tpQuat = new THREE.Quaternion();
+
+    function computeTeleportArc(controller, targetOut) {
+      controller.getWorldPosition(_tpOrigin);
+      controller.getWorldQuaternion(_tpQuat);
+      _tpDir.set(0, 0, -1).applyQuaternion(_tpQuat);
+      let hit = false;
+      let count = 0;
+      for (let i = 0; i <= TP_STEPS; i++) {
+        const t = i * TP_DT;
+        arcPoints[i].set(
+          _tpOrigin.x + _tpDir.x * TP_SPEED * t,
+          _tpOrigin.y + _tpDir.y * TP_SPEED * t - 0.5 * TP_GRAVITY * t * t,
+          _tpOrigin.z + _tpDir.z * TP_SPEED * t
+        );
+        count = i + 1;
+        if (arcPoints[i].y <= 0) {
+          if (i > 0) {
+            const prev = arcPoints[i - 1];
+            const k = prev.y / (prev.y - arcPoints[i].y);
+            arcPoints[i].lerpVectors(prev, arcPoints[i], k);
+            arcPoints[i].y = 0;
+            hit = true;
+          }
+          break;
+        }
+      }
+      if (hit) targetOut.copy(arcPoints[count - 1]);
+      return { hit, count };
+    }
+
+    // Visuals: arc line + landing marker
+    const arcGeo = new THREE.BufferGeometry();
+    arcGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((TP_STEPS + 1) * 3), 3));
+    const arcMat = new THREE.LineBasicMaterial({ color: 0x7dffd0, fog: false });
+    const arcLine = new THREE.Line(arcGeo, arcMat);
+    arcLine.frustumCulled = false;
+    arcLine.visible = false;
+    scene.add(arcLine);
+
+    const markerMat = new THREE.MeshBasicMaterial({ color: 0x7dffd0, transparent: true, opacity: 0.85, side: THREE.DoubleSide, fog: false });
+    const teleportMarker = new THREE.Group();
+    const markerRing = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.27, 32), markerMat);
+    markerRing.rotation.x = -Math.PI / 2;
+    const markerDot = new THREE.Mesh(new THREE.CircleGeometry(0.06, 16), markerMat);
+    markerDot.rotation.x = -Math.PI / 2;
+    teleportMarker.add(markerRing, markerDot);
+    teleportMarker.visible = false;
+    scene.add(teleportMarker);
+
+    // Comfort blink: a short fade to black around the jump (no smooth motion, so no vection)
+    const blinkMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false });
+    const blinkSphere = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 8), blinkMat);
+    blinkSphere.renderOrder = 999;
+    blinkSphere.frustumCulled = false;
+    blinkSphere.visible = false;
+    camera.add(blinkSphere);
+
+    let isTeleporting = false;
+    function teleportTo(target) {
+      if (isTeleporting) return;
+      isTeleporting = true;
+      blinkSphere.visible = true;
+      gsap.to(blinkMat, {
+        opacity: 1, duration: 0.12,
+        onComplete: () => {
+          // Put the head (not the floor origin) over the target spot
+          dolly.position.set(target.x - camera.position.x, 0, target.z - camera.position.z);
+          returnShelf(false);   // a fan left behind would be out of reach
+          hideVRHint();
+          gsap.to(blinkMat, {
+            opacity: 0, duration: 0.15,
+            onComplete: () => { blinkSphere.visible = false; isTeleporting = false; }
+          });
+        }
+      });
+    }
+
+    const teleportState = controllers.map(() => ({ aiming: false, valid: false, target: new THREE.Vector3() }));
+
+    function updateTeleport() {
+      let showing = false;
+      controllers.forEach((controller, i) => {
+        const st = teleportState[i];
+        const src = controller.userData.inputSource;
+        const axes = src && src.gamepad ? src.gamepad.axes : null;
+        // Touch controllers report the thumbstick as axes[2], axes[3]; y is negative when pushed forward
+        const stickY = axes ? (axes.length >= 4 ? axes[3] : axes[1]) : 0;
+
+        if (isBookReaderOpen || isTeleporting) { st.aiming = false; return; }
+
+        if (stickY < -0.6) {
+          st.aiming = true;
+          const { hit, count } = computeTeleportArc(controller, st.target);
+          st.valid = hit && isTeleportSpotValid(st.target.x, st.target.z);
+          const attr = arcGeo.attributes.position;
+          for (let k = 0; k < count; k++) attr.setXYZ(k, arcPoints[k].x, arcPoints[k].y, arcPoints[k].z);
+          attr.needsUpdate = true;
+          arcGeo.setDrawRange(0, count);
+          const color = st.valid ? 0x7dffd0 : 0xff6a5a;
+          arcMat.color.setHex(color);
+          markerMat.color.setHex(color);
+          teleportMarker.position.set(st.target.x, 0.02, st.target.z);
+          teleportMarker.visible = hit;
+          arcLine.visible = true;
+          showing = true;
+        } else if (st.aiming && stickY > -0.3) {
+          st.aiming = false;
+          if (st.valid) teleportTo(st.target);
+          st.valid = false;
+        }
+      });
+      if (!showing) {
+        arcLine.visible = false;
+        teleportMarker.visible = false;
+      }
+    }
+
+    // First-run hint, shown in-headset only until the first teleport (or 30 s)
+    const vrHint = (function () {
+      const c = document.createElement('canvas');
+      c.width = 1024; c.height = 320;
+      const x = c.getContext('2d');
+      x.fillStyle = 'rgba(20, 12, 6, 0.85)'; x.fillRect(0, 0, 1024, 320);
+      x.strokeStyle = '#d4af37'; x.lineWidth = 6; x.strokeRect(10, 10, 1004, 300);
+      x.fillStyle = '#f3e3b0'; x.textAlign = 'center';
+      x.font = 'bold 54px Georgia, serif';
+      x.fillText('Push a thumbstick forward to aim,', 512, 120);
+      x.fillText('release to teleport', 512, 190);
+      x.font = '42px Georgia, serif';
+      x.fillText('Trigger: touch a shelf, then a cover', 512, 265);
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.5, 0.47),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, fog: false })
+      );
+      m.position.set(0, 1.45, -0.2);
+      m.visible = false;
+      scene.add(m);
+      return m;
+    })();
+    let vrHintTimer = null;
+    function hideVRHint() {
+      vrHint.visible = false;
+      if (vrHintTimer) { clearTimeout(vrHintTimer); vrHintTimer = null; }
+    }
+
+    renderer.xr.addEventListener('sessionstart', () => {
+      dolly.position.set(0, 0, 0.8);   // start a comfortable distance in front of the bookcase
+      vrHint.visible = true;
+      vrHintTimer = setTimeout(hideVRHint, 30000);
+    });
+    renderer.xr.addEventListener('sessionend', () => {
+      // Back to the desktop camera: undo any teleport offset
+      dolly.position.set(0, 0, 0);
+      camera.position.set(0, 1.6, 2.6);
+      orbitControls.target.set(0, 1.4, -1.8);
+      hideVRHint();
+      arcLine.visible = false;
+      teleportMarker.visible = false;
+    });
 
     // --- 15. DOM UI EVENT LISTENERS ---
     // Reader UI buttons
@@ -2485,6 +2683,9 @@
 
       // Fireplace flames + flickering light
       animateRoom(clock.elapsedTime);
+
+      // VR teleport aiming (no-op outside a headset)
+      if (renderer.xr.isPresenting) updateTeleport();
 
       // FPS Walk Mode WASD Movement
       if (isFpsMode && pointerLockControls.isLocked) {
