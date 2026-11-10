@@ -113,7 +113,16 @@ Built in the spec's order, one commit per step: plaques and presets, interaction
 - **The camera is clamped inside the room on desktop,** since the room is now smaller. In VR, teleport targets are limited to floor space in front of the bookcase and clear of furniture.
 - **Dependency fix.** `esbuild` bumped to `^0.28.0` in `package.json` so `npm install` works.
 
+**Fixes after first hands-on use (2026-11-10)**
+
+- **FPS Walk could get stuck.** The mode switched on before the browser granted mouse lock, and a failed lock left clicks forced to the screen centre (so only the centre shelf and Dracula could be picked). The mode now turns on only after the lock succeeds. Where mouse lock is unavailable (embedded browsers, some iframes) it falls back to drag-to-look with a normal pointer.
+- **Walk speed.** Movement was tied to frame rate (about 17 m/s on a fast display). It is now 2.4 m/s at any frame rate.
+- **Walking into the bookcase.** The desktop camera can no longer pass through the bookcase.
+- **Reader drop cap.** The drop cap no longer overlaps the third line, and a chapter heading is drawn as a heading instead of receiving the drop cap. Pages that open with a date or number (Dracula) get no drop cap.
+
 **Known issues and open items**
+
+- **Short excerpts by design.** Each book is a 4-page excerpt (Frankenstein 6). Full-length reading is iteration 3.
 
 - **Quest 2 is untested:** frame rate, teleport on device (the thumbstick is assumed to be `axes[2]`/`axes[3]`), and how the arc line looks in the headset.
 - **Blank first load:** the iteration 1 screenshot `r1-desktop.png` showed an empty canvas. It could not be reproduced in this iteration (every load rendered); the screenshot is gone with `.aistudio/`. Worth checking on a clean browser profile.

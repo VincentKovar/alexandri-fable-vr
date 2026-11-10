@@ -977,15 +977,31 @@
         ctx.fillStyle = '#1e1610';
         ctx.textAlign = 'left';
 
+        // Page 1: a short chapter heading is drawn as a heading (no drop cap). The drop cap goes on
+        // the first real paragraph that starts with a letter, so it never lands on a title or a digit.
+        const dropCapIdx = pageIndex === 0
+          ? paragraphs.findIndex(p => p.length >= 60 && /^[A-Za-z]/.test(p))
+          : -1;
         paragraphs.forEach((para, pIdx) => {
-          if (pIdx === 0 && pageIndex === 0) {
+          if (pageIndex === 0 && pIdx === 0 && para.length < 60 && dropCapIdx !== 0) {
+            ctx.fillStyle = '#5a3a24';
+            let hSize = 24;
+            ctx.font = `bold ${hSize}px "Cinzel", Georgia, serif`;
+            while (ctx.measureText(para).width > maxTextWidth && hSize > 12) {
+              hSize -= 1;
+              ctx.font = `bold ${hSize}px "Cinzel", Georgia, serif`;
+            }
+            ctx.fillText(para, marginX, cursorY + 20);
+            cursorY += 62;
+          } else if (pIdx === dropCapIdx) {
             // Drop-cap for the very first letter of the book
             const firstChar = para.charAt(0);
             const restOfPara = para.slice(1);
 
             ctx.fillStyle = '#8b261b';
-            ctx.font = 'bold 58px "Cinzel", Georgia, serif';
-            ctx.fillText(firstChar, marginX, cursorY + 44);
+            // Sized so the cap sits within the two indented lines (baseline = line 2 baseline + 2)
+            ctx.font = 'bold 48px "Cinzel", Georgia, serif';
+            ctx.fillText(firstChar, marginX, cursorY + 30);
 
             ctx.fillStyle = '#1e1610';
             ctx.font = '19px "Georgia", serif';
@@ -2275,13 +2291,13 @@
     let hoveredObject = null;
 
     function onPointerMove(event) {
-      if (event.target !== canvas && !isFpsMode) {
+      if (event.target !== canvas && !pointerLockControls.isLocked) {
         const tooltip = document.getElementById('shelf-tooltip');
         if (tooltip) tooltip.classList.remove('active');
         return;
       }
 
-      if (isFpsMode) {
+      if (pointerLockControls.isLocked) {   // crosshair aiming only while the pointer is truly locked
         mouse.x = 0;
         mouse.y = 0;
       } else {
@@ -2321,10 +2337,10 @@
     function onPointerClick(event) {
       // Prevent canvas raycasting when clicking HUD overlay elements
       if (event.target !== canvas) return;
-      if (pointerDownPos && !isFpsMode &&
+      if (pointerDownPos && !pointerLockControls.isLocked &&
           Math.hypot(event.clientX - pointerDownPos.x, event.clientY - pointerDownPos.y) > 6) return;
 
-      if (isFpsMode) {
+      if (pointerLockControls.isLocked) {   // crosshair aiming only while the pointer is truly locked
         mouse.x = 0;
         mouse.y = 0;
       } else {
@@ -2623,32 +2639,77 @@
     const btnFps = document.getElementById('btn-fps-mode');
     const crosshair = document.getElementById('crosshair');
 
-    btnOrbit.addEventListener('click', () => {
+    // FPS mode. With pointer lock: mouse look + a centre crosshair. Where pointer lock is
+    // unavailable (embedded browsers, some iframes), it falls back to drag-to-look with the
+    // mouse pointer used for clicking. A failed lock can no longer leave the app stuck.
+    let fpsRequested = false;
+    let fpsLockless = false;
+    const fpsLook = { yaw: 0, pitch: 0 };
+    let fpsDragLast = null;
+
+    function setFpsUI(on, crosshairOn) {
+      btnFps.classList.toggle('active', on);
+      btnOrbit.classList.toggle('active', !on);
+      crosshair.classList.toggle('active', on && crosshairOn);
+    }
+    function showHint(text) {
+      const tip = document.getElementById('shelf-tooltip');
+      tip.textContent = text;
+      tip.classList.add('active');
+      setTimeout(() => tip.classList.remove('active'), 5000);
+    }
+    function exitFpsMode() {
+      fpsRequested = false;
+      fpsLockless = false;
       isFpsMode = false;
-      pointerLockControls.unlock();
+      moveVelocity.set(0, 0, 0);
       orbitControls.enabled = true;
-      btnOrbit.classList.add('active');
-      btnFps.classList.remove('active');
-      crosshair.classList.remove('active');
+      setFpsUI(false, false);
+    }
+    function enterLocklessFps() {
+      if (isFpsMode) return;
+      fpsRequested = false;
+      fpsLockless = true;
+      isFpsMode = true;
+      orbitControls.enabled = false;
+      const e = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+      fpsLook.yaw = e.y;
+      fpsLook.pitch = e.x;
+      setFpsUI(true, false);
+      showHint('FPS Walk: drag to look, WASD to walk (mouse lock unavailable here)');
+    }
+
+    btnOrbit.addEventListener('click', () => {
+      pointerLockControls.unlock();
+      exitFpsMode();
     });
 
     btnFps.addEventListener('click', () => {
-      isFpsMode = true;
-      orbitControls.enabled = false;
-      pointerLockControls.lock();
-      btnFps.classList.add('active');
-      btnOrbit.classList.remove('active');
-      crosshair.classList.add('active');
+      if (isFpsMode) return;
+      fpsRequested = true;
+      pointerLockControls.lock(); // 'lock' (success) or 'pointerlockerror' (failure) follows
+      // Some browsers reject without firing an event, so also check after a moment
+      setTimeout(() => { if (fpsRequested && !pointerLockControls.isLocked) enterLocklessFps(); }, 700);
     });
 
-    pointerLockControls.addEventListener('unlock', () => {
-      if (isFpsMode) {
-        isFpsMode = false;
-        orbitControls.enabled = true;
-        btnOrbit.classList.add('active');
-        btnFps.classList.remove('active');
-        crosshair.classList.remove('active');
-      }
+    pointerLockControls.addEventListener('lock', () => {
+      fpsRequested = false;
+      isFpsMode = true;
+      orbitControls.enabled = false;
+      setFpsUI(true, true);
+    });
+    pointerLockControls.addEventListener('unlock', exitFpsMode);
+    document.addEventListener('pointerlockerror', () => { if (fpsRequested) enterLocklessFps(); });
+
+    // Drag-to-look for the lockless fallback
+    window.addEventListener('pointerdown', (e) => { fpsDragLast = { x: e.clientX, y: e.clientY }; });
+    window.addEventListener('pointerup', () => { fpsDragLast = null; });
+    window.addEventListener('pointermove', (e) => {
+      if (!fpsLockless || isBookReaderOpen || !fpsDragLast || !(e.buttons & 1) || e.target !== canvas) return;
+      fpsLook.yaw -= (e.clientX - fpsDragLast.x) * 0.0035;
+      fpsLook.pitch = Math.max(-1.2, Math.min(1.2, fpsLook.pitch - (e.clientY - fpsDragLast.y) * 0.0035));
+      fpsDragLast = { x: e.clientX, y: e.clientY };
+      camera.quaternion.setFromEuler(new THREE.Euler(fpsLook.pitch, fpsLook.yaw, 0, 'YXZ'));
     });
 
     // Audio Toggle
@@ -2669,6 +2730,8 @@
     const clock = new THREE.Clock();
     const CAMERA_MIN = new THREE.Vector3(ROOM.xMin + 0.4, 0.4, ROOM.zMin + 0.7);
     const CAMERA_MAX = new THREE.Vector3(ROOM.xMax - 0.4, ROOM.h - 0.3, ROOM.zMax - 0.4);
+    const BOOKCASE_HALF_WIDTH = 2.45;   // 4.2 m case + pilasters
+    const BOOKCASE_FRONT_LIMIT = -1.15; // shelf front is at z = -1.525; keep a 0.37 m margin
 
     function renderLoop(timestamp, frame) {
       const delta = clock.getDelta();
@@ -2688,21 +2751,21 @@
       if (renderer.xr.isPresenting) updateTeleport();
 
       // FPS Walk Mode WASD Movement
-      if (isFpsMode && pointerLockControls.isLocked) {
+      if (isFpsMode && (pointerLockControls.isLocked || fpsLockless)) {
         moveDirection.z = Number(keys.KeyW) - Number(keys.KeyS);
         moveDirection.x = Number(keys.KeyD) - Number(keys.KeyA);
         moveDirection.normalize();
 
+        // Velocity is in metres/second and eases toward the target speed; distance per frame
+        // is velocity x frame time, so walking is 2.4 m/s at any frame rate.
         const walkSpeed = 2.4;
-        if (keys.KeyW || keys.KeyS) moveVelocity.z -= moveDirection.z * walkSpeed * delta;
-        if (keys.KeyA || keys.KeyD) moveVelocity.x -= moveDirection.x * walkSpeed * delta;
+        const dt = Math.min(delta, 0.1);
+        const ease = 1 - Math.exp(-10 * dt);
+        moveVelocity.z += (moveDirection.z * walkSpeed - moveVelocity.z) * ease;
+        moveVelocity.x += (moveDirection.x * walkSpeed - moveVelocity.x) * ease;
 
-        // Friction damping
-        moveVelocity.z *= 0.88;
-        moveVelocity.x *= 0.88;
-
-        pointerLockControls.moveForward(-moveVelocity.z);
-        pointerLockControls.moveRight(-moveVelocity.x);
+        pointerLockControls.moveForward(moveVelocity.z * dt);
+        pointerLockControls.moveRight(moveVelocity.x * dt);
         camera.position.y = 1.6; // Keep steady eye height
       } else if (!renderer.xr.isPresenting) {
         orbitControls.update();
@@ -2711,6 +2774,10 @@
       // Desktop: keep the camera inside the (now smaller) room. VR locomotion handles its own bounds.
       if (!renderer.xr.isPresenting) {
         camera.position.clamp(CAMERA_MIN, CAMERA_MAX);
+        // Solid bookcase: never let the camera enter it (push back out to the front)
+        if (Math.abs(camera.position.x) < BOOKCASE_HALF_WIDTH && camera.position.z < BOOKCASE_FRONT_LIMIT) {
+          camera.position.z = BOOKCASE_FRONT_LIMIT;
+        }
       }
 
       renderer.render(scene, camera);
