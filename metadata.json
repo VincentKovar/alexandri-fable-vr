@@ -1,0 +1,6 @@
+{
+  "name": "Alexandria VR - 3D Interactive Library",
+  "description": "An immersive 3D WebXR interactive library prototype built with Three.js, WebXR Device API, and GSAP featuring animated bookshelves and 2.5D page-turning flipbook reader.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

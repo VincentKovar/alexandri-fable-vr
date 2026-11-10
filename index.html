@@ -1,0 +1,2257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Alexandria VR - 3D Interactive Library</title>
+  <meta name="description" content="An immersive 3D WebXR interactive library prototype built with Three.js, WebXR Device API, and GSAP featuring animated bookshelves and 2.5D page-turning flipbook reader.">
+  <meta property="og:title" content="Alexandria VR - 3D Interactive Library">
+  <meta property="og:description" content="An immersive 3D WebXR interactive library prototype built with Three.js, WebXR Device API, and GSAP.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Core 3D Engine & Animation Libraries via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
+
+  <style>
+    :root {
+      --gold-primary: #d4af37;
+      --gold-light: #f7e7a9;
+      --wood-dark: #1f1209;
+      --parchment: #f9f5ea;
+      --leather-trim: #3c2415;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0b0704;
+      font-family: -apple-system, BlinkMacSystemFont, "Cinzel", "Georgia", "Times New Roman", serif;
+      color: #e6dfd5;
+    }
+
+    #webgl-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      display: block;
+    }
+
+    /* Head-Up Display (HUD) Layer */
+    .hud-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 20px;
+    }
+
+    /* Top Navigation & Status Bar */
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .brand-badge {
+      pointer-events: auto;
+      background: rgba(22, 14, 9, 0.88);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      padding: 12px 20px;
+      border-radius: 4px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold-primary);
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-subtitle {
+      font-size: 0.78rem;
+      color: #a89f91;
+      letter-spacing: 0.05em;
+      margin-top: 4px;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    .hud-controls-help {
+      pointer-events: auto;
+      background: rgba(22, 14, 9, 0.88);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      padding: 10px 16px;
+      border-radius: 4px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.75rem;
+      color: #c4b9aa;
+      line-height: 1.5;
+      text-align: right;
+    }
+
+    .hud-controls-help span {
+      color: var(--gold-light);
+      font-weight: 600;
+    }
+
+    /* Active Book Reading Banner */
+    .reader-overlay {
+      position: absolute;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: auto;
+      background: rgba(26, 16, 10, 0.95);
+      border: 1px solid var(--gold-primary);
+      padding: 14px 28px;
+      border-radius: 6px;
+      text-align: center;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.85);
+      display: none;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      z-index: 25;
+      max-width: 90vw;
+    }
+
+    .reader-overlay.active {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      opacity: 1;
+    }
+
+    .reader-title {
+      font-size: 1.1rem;
+      color: var(--gold-light);
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+
+    .reader-author {
+      font-size: 0.82rem;
+      color: #bfae9a;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    .reader-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    .btn-reader {
+      background: rgba(212, 175, 55, 0.15);
+      border: 1px solid var(--gold-primary);
+      color: var(--gold-light);
+      padding: 6px 14px;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      border-radius: 3px;
+      text-transform: uppercase;
+      font-family: inherit;
+      transition: all 0.2s ease;
+    }
+
+    .btn-reader:hover {
+      background: var(--gold-primary);
+      color: #1a0f08;
+    }
+
+    .btn-reader.close-btn {
+      background: rgba(180, 50, 40, 0.3);
+      border-color: #d9534f;
+      color: #ffb3b0;
+    }
+
+    .btn-reader.close-btn:hover {
+      background: #d9534f;
+      color: #ffffff;
+    }
+
+    /* Shelf Hover / Selection Tooltip */
+    .shelf-tooltip {
+      position: absolute;
+      bottom: 110px;
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: none;
+      background: rgba(18, 11, 7, 0.9);
+      border: 1px solid rgba(212, 175, 55, 0.5);
+      padding: 8px 18px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      color: var(--gold-light);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      white-space: nowrap;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    }
+
+    .shelf-tooltip.active {
+      opacity: 1;
+    }
+
+    /* Sleek Collapsible Bottom Dock */
+    .dock-wrapper {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: min(940px, 94vw);
+      z-index: 15;
+    }
+
+    .dock-toggle-btn {
+      background: rgba(22, 14, 9, 0.92);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      border-bottom: none;
+      color: var(--gold-primary);
+      padding: 6px 16px;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 4px 4px 0 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s ease;
+    }
+
+    .dock-toggle-btn:hover {
+      background: rgba(45, 29, 18, 0.95);
+      color: var(--gold-light);
+    }
+
+    .bottom-dock {
+      background: rgba(20, 13, 8, 0.94);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      padding: 12px 20px;
+      border-radius: 6px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+    }
+
+    .dock-wrapper.collapsed .bottom-dock {
+      transform: translateY(120%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .dock-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dock-label {
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #9c8e7e;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    .dock-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      color: #d6ccbf;
+      padding: 7px 13px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      border-radius: 3px;
+      font-family: system-ui, -apple-system, sans-serif;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .dock-btn:hover {
+      background: rgba(212, 175, 55, 0.2);
+      border-color: var(--gold-primary);
+      color: #ffffff;
+    }
+
+    .dock-btn.active {
+      background: var(--gold-primary);
+      color: #1a0f08;
+      font-weight: 600;
+      border-color: var(--gold-light);
+    }
+
+    .dock-separator {
+      width: 1px;
+      height: 24px;
+      background: rgba(212, 175, 55, 0.2);
+    }
+
+    /* VR Button Styling overrides */
+    #VRButton {
+      bottom: 24px !important;
+      left: calc(50% - 75px) !important;
+      background: rgba(20, 13, 8, 0.95) !important;
+      border: 1px solid var(--gold-primary) !important;
+      color: var(--gold-light) !important;
+      font-family: "Cinzel", "Georgia", serif !important;
+      letter-spacing: 0.1em !important;
+      text-transform: uppercase !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8) !important;
+      padding: 10px 18px !important;
+      font-size: 13px !important;
+      opacity: 0.95 !important;
+    }
+
+    #VRButton:hover {
+      background: var(--gold-primary) !important;
+      color: #1a0f08 !important;
+    }
+
+    /* PointerLock Crosshair (Desktop Walk Mode) */
+    .crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 8px;
+      background: rgba(212, 175, 55, 0.7);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 5;
+      display: none;
+    }
+
+    .crosshair.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- WebGL Render Canvas -->
+  <canvas id="webgl-canvas"></canvas>
+
+  <!-- Crosshair for FPS Walk Mode -->
+  <div id="crosshair" class="crosshair"></div>
+
+  <!-- HUD Interface Layer -->
+  <div class="hud-layer">
+    <!-- Top Header -->
+    <header class="hud-header">
+      <div class="brand-badge">
+        <h1 class="brand-title">🏛️ Alexandria VR</h1>
+        <p class="brand-subtitle">Project Gutenberg 3D Interactive Library • WebXR</p>
+      </div>
+
+      <div class="hud-controls-help">
+        <div><span>Desktop:</span> WASD Move • Left Drag Look • Right Drag Pan</div>
+        <div><span>Interaction:</span> Click Shelf to Fan • Click Book to Read</div>
+        <div><span>WebXR / VR:</span> Trigger Raycast to Select & Turn Pages</div>
+      </div>
+    </header>
+
+    <!-- Reading Banner (Shown when book is opened) -->
+    <div id="reader-overlay" class="reader-overlay">
+      <div id="reader-title" class="reader-title">Frankenstein</div>
+      <div id="reader-author" class="reader-author">by Mary Wollstonecraft Shelley (1818)</div>
+      <div id="reader-pages-info" style="font-size: 0.75rem; color: #d4af37;">Page 1 of 6 • Click Right Page to Flip Forward, Left Page to Flip Back</div>
+      <div class="reader-actions">
+        <button id="btn-prev-page" class="btn-reader">◂ Prev Page</button>
+        <button id="btn-next-page" class="btn-reader">Next Page ▸</button>
+        <button id="btn-gutenberg-link" class="btn-reader">View on Gutenberg ↗</button>
+        <button id="btn-close-reader" class="btn-reader close-btn">✕ Return Book to Shelf</button>
+      </div>
+    </div>
+
+    <!-- Shelf Hover Tooltip -->
+    <div id="shelf-tooltip" class="shelf-tooltip">Click shelf to slide books forward</div>
+
+    <!-- Ergonomic Bottom Dock -->
+    <div id="dock-wrapper" class="dock-wrapper">
+      <button id="dock-toggle-btn" class="dock-toggle-btn" aria-label="Toggle Controls Dock">
+        <span>▾ Hide Controls</span>
+      </button>
+
+      <nav class="bottom-dock" aria-label="Library Navigation Controls">
+        <!-- Shelf Selector -->
+        <div class="dock-group">
+          <span class="dock-label">Shelves:</span>
+          <button class="dock-btn" data-tier="0">Top (Classics)</button>
+          <button class="dock-btn" data-tier="1">Mid (Gothic & Sci-Fi)</button>
+          <button class="dock-btn" data-tier="2">Bottom (Epics)</button>
+        </div>
+
+        <div class="dock-separator"></div>
+
+        <!-- Atmosphere Preset Selector -->
+        <div class="dock-group">
+          <span class="dock-label">Atmosphere:</span>
+          <button class="dock-btn active" data-preset="victorian_grand">Victorian</button>
+          <button class="dock-btn" data-preset="cozy_oxford">Oxford</button>
+          <button class="dock-btn" data-preset="cyberpunk_vault">Cyber Data</button>
+          <button class="dock-btn" data-preset="monastery">Scriptorium</button>
+        </div>
+
+        <div class="dock-separator"></div>
+
+        <!-- Camera / Control Mode -->
+        <div class="dock-group">
+          <span class="dock-label">Controls:</span>
+          <button id="btn-orbit-mode" class="dock-btn active">Orbit Cam</button>
+          <button id="btn-fps-mode" class="dock-btn">FPS Walk</button>
+          <button id="btn-audio-toggle" class="dock-btn">🔊 Sound: On</button>
+        </div>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Main Standalone Application Script -->
+  <script>
+    /**
+     * ALEXANDRIA VR - 3D INTERACTIVE LIBRARY PROTOTYPE
+     * Built with Three.js, GSAP 3, and WebXR Device API.
+     * 
+     * Complete standalone single-file delivery with procedural wood, leather,
+     * wallpaper, and paper textures, full Gutenberg dataset, and WebXR raycaster.
+     */
+
+    // --- 1. PROJECT GUTENBERG DATASET (12 Classic Books) ---
+    const GUTENBERG_LIBRARY = [
+      {
+        id: "frankenstein",
+        title: "Frankenstein; or, The Modern Prometheus",
+        author: "Mary Wollstonecraft Shelley",
+        year: 1818,
+        gutenbergId: 84,
+        shelfTier: 0,
+        shelfPosition: 0,
+        spineColor: "#1a2a2a",
+        accentColor: "#9ec5b8",
+        description: "A gothic tale of scientific ambition, the spark of life, and tragic consequence.",
+        pages: [
+          "Letter 1\n\nTo Mrs. Saville, England.\nSt. Petersburgh, Dec. 11th, 17—\n\nYou will rejoice to hear that no disaster has accompanied the commencement of an enterprise which you have regarded with such evil forebodings. I arrived here yesterday, and my first task is to assure my dear sister of my welfare and increasing confidence in the success of my undertaking.",
+          "I am already far north of London, and as I walk in the streets of Petersburgh, I feel a cold northern breeze play upon my cheeks, which braces my nerves and fills me with delight. Do you understand this feeling? This breeze gives me a foretaste of those icy climes.",
+          "Inspirited by this wind of promise, my daydreams become more fervent and vivid. I try in vain to be persuaded that the pole is the seat of frost and desolation; it ever presents itself to my imagination as the region of beauty and delight.",
+          "It was on a dreary night of November that I beheld the accomplishment of my toils. With an anxiety that almost amounted to agony, I collected the instruments of life around me, that I might infuse a spark of being into the lifeless thing that lay at my feet.",
+          "It was already one in the morning; the rain pattered dismally against the panes, and my candle was nearly burnt out, when, by the glimmer of the half-extinguished light, I saw the dull yellow eye of the creature open; it breathed hard, and a convulsive motion agitated its limbs.",
+          "How can I describe my emotions at this catastrophe, or how delineate the wretch whom with such infinite pains and care I had endeavoured to form? His yellow skin scarcely covered the work of muscles and arteries beneath; his hair was of a lustrous black, and flowing."
+        ]
+      },
+      {
+        id: "pride-and-prejudice",
+        title: "Pride and Prejudice",
+        author: "Jane Austen",
+        year: 1813,
+        gutenbergId: 1342,
+        shelfTier: 0,
+        shelfPosition: 1,
+        spineColor: "#3d1e2f",
+        accentColor: "#e5b887",
+        description: "The timeless comedy of Elizabeth Bennet and Fitzwilliam Darcy navigating societal expectations.",
+        pages: [
+          "Chapter 1\n\nIt is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.\n\nHowever little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.",
+          "\"My dear Mr. Bennet,\" said his lady to him one day, \"have you heard that Netherfield Park is let at last?\"\n\nMr. Bennet replied that he had not.\n\n\"But it is,\" returned she; \"for Mrs. Long has just been here, and she told me all about it.\"\n\nMr. Bennet made no answer.",
+          "\"Do you not want to know who has taken it?\" cried his wife impatiently.\n\n\"You want to tell me, and I have no objection to hearing it.\"\n\nThis was invitation enough for Mrs. Bennet to recount the arrival of Mr. Bingley from the north of England.",
+          "\"What a fine thing for our girls! A single man of large fortune; four or five thousand a year!\"\n\n\"How so? How can it affect them?\"\n\n\"My dear Mr. Bennet,\" replied his wife, \"how can you be so tiresome! You must know that I am thinking of his marrying one of them.\""
+        ]
+      },
+      {
+        id: "great-gatsby",
+        title: "The Great Gatsby",
+        author: "F. Scott Fitzgerald",
+        year: 1925,
+        gutenbergId: 64317,
+        shelfTier: 0,
+        shelfPosition: 2,
+        spineColor: "#0f2338",
+        accentColor: "#ffd700",
+        description: "The Jazz Age masterpiece of love, opulence, and the elusive American Dream.",
+        pages: [
+          "Chapter 1\n\nIn my younger and more vulnerable years my father gave me some advice that I've been turning over in my mind ever since.\n\n\"Whenever you feel like criticizing any one,\" he told me, \"just remember that all the people in this world haven't had the advantages that you've had.\"",
+          "He didn't say any more, but we've always been unusually communicative in a reserved way, and I understood that he meant a great deal more than that. In consequence, I'm inclined to reserve all judgments, a habit that has opened up many curious natures to me.",
+          "And as I sat there brooding on the old, unknown world, I thought of Gatsby's wonder when he first picked out the green light at the end of Daisy's dock. He had come a long way to this blue lawn, and his dream must have seemed so close that he could hardly fail to grasp it.",
+          "Gatsby believed in the green light, the orgastic future that year by year recedes before us. It eluded us then, but that's no matter—to-morrow we will run faster, stretch out our arms farther. . . . And one fine morning——\n\nSo we beat on, boats against the current, borne back ceaselessly into the past."
+        ]
+      },
+      {
+        id: "alice-in-wonderland",
+        title: "Alice's Adventures in Wonderland",
+        author: "Lewis Carroll",
+        year: 1865,
+        gutenbergId: 11,
+        shelfTier: 0,
+        shelfPosition: 3,
+        spineColor: "#4a1912",
+        accentColor: "#f3c68f",
+        description: "A whimsical journey through a fantastical realm filled with peculiar creatures.",
+        pages: [
+          "Chapter 1 — Down the Rabbit-Hole\n\nAlice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, \"and what is the use of a book,\" thought Alice \"without pictures or conversations?\"",
+          "So she was considering in her own mind (as well as she could, for the hot day made her feel very sleepy and stupid), whether the pleasure of making a daisy-chain would be worth the trouble of getting up and picking the daisies, when suddenly a White Rabbit with pink eyes ran close by her.",
+          "There was nothing so very remarkable in that; nor did Alice think it so very much out of the way to hear the Rabbit say to itself, \"Oh dear! Oh dear! I shall be late!\" but when the Rabbit actually took a watch out of its waistcoat-pocket, and looked at it, Alice started to her feet.",
+          "Burning with curiosity, she ran across the field after it, and fortunately was just in time to see it pop down a large rabbit-hole under the hedge. In another moment down went Alice after it, never once considering how in the world she was to get out again."
+        ]
+      },
+      {
+        id: "moby-dick",
+        title: "Moby Dick; or, The Whale",
+        author: "Herman Melville",
+        year: 1851,
+        gutenbergId: 2701,
+        shelfTier: 1,
+        shelfPosition: 0,
+        spineColor: "#173444",
+        accentColor: "#80ced7",
+        description: "Captain Ahab's obsessive quest for vengeance against the white leviathan.",
+        pages: [
+          "Chapter 1 — Loomings\n\nCall me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.",
+          "It is a way I have of driving off the spleen and regulating the circulation. Whenever I find myself growing grim about the mouth; whenever it is a damp, drizzly November in my soul; whenever I find myself involuntarily pausing before coffin warehouses—then, I account it high time to get to sea as soon as I can.",
+          "There now is your insular city of the Manhattoes, belted round by wharves as Indian isles by coral reefs—commerce surrounds it with her surf. Right and left, the streets take you waterward. Its extreme downtown is the battery, where that noble mole is washed by waves.",
+          "Circumambulate the city of a dreamy Sabbath afternoon. Go from Corlears Hook to Coenties Slip, and from thence, by Whitehall, northward. What do you see?—Posted like silent sentinels all around the town, stand thousands upon thousands of mortal men fixed in ocean reveries."
+        ]
+      },
+      {
+        id: "the-time-machine",
+        title: "The Time Machine",
+        author: "H.G. Wells",
+        year: 1895,
+        gutenbergId: 35,
+        shelfTier: 1,
+        shelfPosition: 1,
+        spineColor: "#2b2230",
+        accentColor: "#d8a47f",
+        description: "The pioneering science-fiction voyage into the distant year 802,701 AD.",
+        pages: [
+          "Chapter 1\n\nThe Time Traveller (for so it will be convenient to speak of him) was expounding a recondite matter to us. His grey eyes shone and twinkled, and his usually pale face was flushed and animated.",
+          "The fire burned brightly, and the soft radiance of the incandescent lights in the lilies of silver caught the bubbles that flashed and passed in our glasses. Our chairs, being his patents, embraced and caressed us rather than submitted to be sat upon.",
+          "\"You must follow me carefully. I shall have to controvert one or two ideas that are almost universally accepted. The geometry, for instance, they taught you at school is founded on a misconception.\"",
+          "\"Any real body must have extension in four directions: it must have Length, Breadth, Thickness, and—Duration. There is no difference between Time and any of the three dimensions of Space except that our consciousness moves along it.\""
+        ]
+      },
+      {
+        id: "dracula",
+        title: "Dracula",
+        author: "Bram Stoker",
+        year: 1897,
+        gutenbergId: 345,
+        shelfTier: 1,
+        shelfPosition: 2,
+        spineColor: "#331111",
+        accentColor: "#e63946",
+        description: "The gothic horror chronicle of Count Dracula and the battle for Mina Murray's soul.",
+        pages: [
+          "Chapter 1 — Jonathan Harker's Journal\n\n3 May. Bistritz.—Left Munich at 8:35 P. M., on 1st May, arriving at Vienna early next morning. Buda-Pesth seems a wonderful place. The impression I had was that we were leaving the West and entering the East.",
+          "The Carpathians were before me. The dark pine woods stood out against the snowy backdrop. As the evening fell, the howling of wolves began to echo from the distant valleys.",
+          "\"Welcome to my house! Enter freely and of your own will!\"\n\nHe made no motion of stepping to meet me, but stood like a statue, as though his gesture of welcome had fixed him into stone.",
+          "The instant I had stepped over the threshold, he moved impulsively forward, and holding out his hand grasped mine with a strength which made me wince, an effect which was not lessened by the fact that it seemed as cold as ice—more like the hand of a dead than a living man."
+        ]
+      },
+      {
+        id: "sherlock-holmes",
+        title: "The Adventures of Sherlock Holmes",
+        author: "Arthur Conan Doyle",
+        year: 1892,
+        gutenbergId: 1661,
+        shelfTier: 1,
+        shelfPosition: 3,
+        spineColor: "#1b283d",
+        accentColor: "#f39c12",
+        description: "Twelve quintessential detective mysteries of 221B Baker Street solved through pure deduction.",
+        pages: [
+          "I. A Scandal in Bohemia\n\nTo Sherlock Holmes she is always THE woman. I have seldom heard him mention her under any other name. In his eyes she eclipses and predominates the whole of her sex. It was not that he felt any emotion akin to love for Irene Adler.",
+          "All emotions, and that one particularly, were abhorrent to his cold, precise but admirably balanced mind. He was, I take it, the most perfect reasoning and observing machine that the world has seen.",
+          "He never spoke of the softer passions, save with a gibe and a sneer. They were admirable things for the observer—excellent for drawing the veil from men's motives and actions. But for the trained reasoner to admit such intrusions was to introduce a distracting factor.",
+          "And yet there was but one woman to him, and that woman was the late Irene Adler, of dubious and questionable memory."
+        ]
+      },
+      {
+        id: "war-and-peace",
+        title: "War and Peace",
+        author: "Leo Tolstoy",
+        year: 1869,
+        gutenbergId: 2600,
+        shelfTier: 2,
+        shelfPosition: 0,
+        spineColor: "#35271a",
+        accentColor: "#caa552",
+        description: "Tolstoy's monumental historical panorama of Russian society during the Napoleonic wars.",
+        pages: [
+          "Book One: 1805\n\nChapter I\n\n\"Well, Prince, so Genoa and Lucca are now just family estates of the Buonapartes. But I warn you, if you don't tell me that this means war, I will have nothing more to do with you!\"",
+          "It was in July, 1805, and the speaker was Anna Pavlovna Scherer, maid of honor to Empress Marya Fedorovna. With these words she greeted Prince Vasili Kuragin, who was the first to arrive at her reception.",
+          "All her invitations, written in French and delivered by a scarlet-liveried footman, ran as follows: \"If the prospect of spending an evening with a poor invalid is not too terrible, I shall be very charmed to see you tonight.\"",
+          "Prince Vasili spoke that refined French in which our grandparents not only spoke but thought, and with those easy, affected intonations peculiar to a man who had grown old in high society."
+        ]
+      },
+      {
+        id: "tale-of-two-cities",
+        title: "A Tale of Two Cities",
+        author: "Charles Dickens",
+        year: 1859,
+        gutenbergId: 98,
+        shelfTier: 2,
+        shelfPosition: 1,
+        spineColor: "#22252a",
+        accentColor: "#e63946",
+        description: "The historical drama of London and Paris amidst the turmoil of the French Revolution.",
+        pages: [
+          "Book the First—Recalled to Life\n\nChapter I. The Period\n\nIt was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity,",
+          "it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way.",
+          "There were a king with a large jaw and a queen with a plain face, on the throne of England; there were a king with a large jaw and a queen with a fair face, on the throne of France.",
+          "It was the year of Our Lord one thousand seven hundred and seventy-five. Spiritual revelations were conceded to England at that favoured period, as at this."
+        ]
+      },
+      {
+        id: "dorian-gray",
+        title: "The Picture of Dorian Gray",
+        author: "Oscar Wilde",
+        year: 1890,
+        gutenbergId: 174,
+        shelfTier: 2,
+        shelfPosition: 2,
+        spineColor: "#1e2b20",
+        accentColor: "#a7b897",
+        description: "The philosophical story of vanity, youth, and an aging secret portrait.",
+        pages: [
+          "The Preface\n\nThe artist is the creator of beautiful things. To reveal art and conceal the artist is art's aim.\n\nThe critic is he who can translate into another manner or a new material his impression of beautiful things.",
+          "There is no such thing as a moral or an immoral book. Books are well written, or badly written. That is all.",
+          "Chapter 1\n\nThe studio was filled with the rich odour of roses, and when the light summer wind stirred amidst the trees of the garden, there came through the open door the heavy scent of the lilac.",
+          "In the centre of the room, clamped to an upright easel, stood the full-length portrait of a young man of extraordinary personal beauty, and in front of it, some little distance off, was sitting the artist himself, Basil Hallward."
+        ]
+      },
+      {
+        id: "metamorphosis",
+        title: "The Metamorphosis",
+        author: "Franz Kafka",
+        year: 1915,
+        gutenbergId: 5200,
+        shelfTier: 2,
+        shelfPosition: 3,
+        spineColor: "#392b26",
+        accentColor: "#f39c12",
+        description: "Gregor Samsa wakes one morning transformed into an enormous monstrous vermin.",
+        pages: [
+          "I\n\nOne morning, when Gregor Samsa woke from troubled dreams, he found himself transformed in his bed into a horrible vermin.",
+          "He lay on his armour-like back, and if he lifted his head a little he could see his brown belly, slightly domed and divided by arches into stiff sections.",
+          "His many legs, pitifully thin compared with the size of the rest of him, waved about helplessly as he looked. \"What's happened to me?\" he thought. It wasn't a dream.",
+          "His room, a proper human room although a little too small, lay peacefully between its four familiar walls. A collection of textile samples lay spread out on the table—Samsa was a travelling salesman."
+        ]
+      }
+    ];
+
+    // --- 2. PROCEDURAL TEXTURE GENERATION (100% Zero-404 Asset Delivery) ---
+    const TextureGenerator = {
+      // Wood plank floor texture with varnish specular sheen
+      generateWoodFloor() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+
+        // Dark rich mahogany / teak base
+        ctx.fillStyle = '#26150b';
+        ctx.fillRect(0, 0, 1024, 1024);
+
+        const plankHeight = 128;
+        const numPlanks = 8;
+
+        for (let i = 0; i < numPlanks; i++) {
+          const y = i * plankHeight;
+          const hueVar = (Math.random() - 0.5) * 10;
+          ctx.fillStyle = `rgb(${45 + hueVar}, ${25 + hueVar * 0.6}, ${14 + hueVar * 0.3})`;
+          ctx.fillRect(0, y, 1024, plankHeight);
+
+          // Wood grain fine lines
+          ctx.strokeStyle = 'rgba(15, 8, 4, 0.4)';
+          ctx.lineWidth = 1;
+          for (let g = 0; g < 40; g++) {
+            ctx.beginPath();
+            const startY = y + Math.random() * plankHeight;
+            ctx.moveTo(0, startY);
+            ctx.bezierCurveTo(
+              300, startY + (Math.random() - 0.5) * 12,
+              700, startY + (Math.random() - 0.5) * 12,
+              1024, startY + (Math.random() - 0.5) * 10
+            );
+            ctx.stroke();
+          }
+
+          // Plank border shadows (joints)
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+          ctx.fillRect(0, y + plankHeight - 3, 1024, 3);
+          ctx.fillStyle = 'rgba(212, 175, 55, 0.1)';
+          ctx.fillRect(0, y, 1024, 2);
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(4, 4);
+        return texture;
+      },
+
+      // Fluted dark mahogany wood texture for shelves & architectural trim
+      generateMahoganyWood() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#3a1e12';
+        ctx.fillRect(0, 0, 512, 512);
+
+        // Vertical grain fibers
+        for (let x = 0; x < 512; x += 4) {
+          const tone = 30 + Math.sin(x * 0.1) * 15 + Math.random() * 10;
+          ctx.fillStyle = `rgba(${tone + 25}, ${tone * 0.6 + 10}, ${tone * 0.3 + 5}, 0.6)`;
+          ctx.fillRect(x, 0, 3, 512);
+        }
+
+        // Gold leaf trim accents
+        ctx.fillStyle = 'rgba(212, 175, 55, 0.2)';
+        ctx.fillRect(0, 0, 512, 8);
+        ctx.fillRect(0, 504, 512, 8);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        return texture;
+      },
+
+      // Victorian damask library wallpaper
+      generateWallpaper() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        // Deep vintage burgundy / forest dark wall
+        ctx.fillStyle = '#1c1012';
+        ctx.fillRect(0, 0, 512, 512);
+
+        // Damask fleur-de-lis floral pattern
+        ctx.strokeStyle = 'rgba(212, 175, 55, 0.18)';
+        ctx.lineWidth = 2;
+        for (let x = 64; x < 512; x += 128) {
+          for (let y = 64; y < 512; y += 128) {
+            ctx.beginPath();
+            ctx.arc(x, y, 22, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(x, y - 10, 12, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(x - 26, y);
+            ctx.lineTo(x + 26, y);
+            ctx.moveTo(x, y - 26);
+            ctx.lineTo(x, y + 26);
+            ctx.stroke();
+          }
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(6, 4);
+        return texture;
+      },
+
+      // Leather book cover with gold foil stamping
+      generateBookCover(book) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 768;
+        const ctx = canvas.getContext('2d');
+
+        // Leather base texture
+        ctx.fillStyle = book.spineColor;
+        ctx.fillRect(0, 0, 512, 768);
+
+        // Leather grain stippling
+        for (let i = 0; i < 4000; i++) {
+          ctx.fillStyle = `rgba(0, 0, 0, ${Math.random() * 0.12})`;
+          ctx.fillRect(Math.random() * 512, Math.random() * 768, 2, 2);
+        }
+
+        // Ornate outer gold foil frame
+        ctx.strokeStyle = '#d4af37';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(28, 28, 512 - 56, 768 - 56);
+
+        ctx.strokeStyle = 'rgba(212, 175, 55, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(38, 38, 512 - 76, 768 - 76);
+
+        // Corner filigree flourishes
+        const corners = [[46, 46], [512 - 46, 46], [46, 768 - 46], [512 - 46, 768 - 46]];
+        corners.forEach(([cx, cy]) => {
+          ctx.fillStyle = '#f7e7a9';
+          ctx.beginPath();
+          ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Gutenberg Library medallion crest
+        ctx.strokeStyle = '#d4af37';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(256, 170, 54, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f7e7a9';
+        ctx.font = 'bold 36px "Cinzel", Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('PG', 256, 182);
+
+        // Book Title (wrapped)
+        ctx.fillStyle = '#fdf3d0';
+        ctx.font = 'bold 30px "Cinzel", Georgia, serif';
+        const words = book.title.split(' ');
+        let line = '';
+        let y = 300;
+        for (let n = 0; n < words.length; n++) {
+          const testLine = line + words[n] + ' ';
+          const metrics = ctx.measureText(testLine);
+          if (metrics.width > 400 && n > 0) {
+            ctx.fillText(line.trim(), 256, y);
+            line = words[n] + ' ';
+            y += 42;
+          } else {
+            line = testLine;
+          }
+        }
+        ctx.fillText(line.trim(), 256, y);
+
+        // Horizontal gold divider
+        y += 30;
+        ctx.strokeStyle = '#d4af37';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(140, y);
+        ctx.lineTo(372, y);
+        ctx.stroke();
+
+        // Author Name
+        y += 48;
+        ctx.fillStyle = '#e6dfd5';
+        ctx.font = 'italic 24px Georgia, serif';
+        ctx.fillText(book.author, 256, y);
+
+        // Publication Year
+        y += 36;
+        ctx.fillStyle = '#bfae9a';
+        ctx.font = '18px system-ui, sans-serif';
+        ctx.fillText(`Published ${book.year} • Gutenberg #${book.gutenbergId}`, 256, y);
+
+        // Bottom embossing emblem
+        ctx.fillStyle = 'rgba(212, 175, 55, 0.4)';
+        ctx.font = '14px system-ui, sans-serif';
+        ctx.fillText('CLASSIC LITERATURE COLLECTION', 256, 700);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+      },
+
+      // Typeset 2.5D book page (parchment with serif text, drop cap, and running header)
+      generatePageTexture(book, pageIndex, isLeftPage) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 768;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+
+        // Warm aged parchment paper
+        ctx.fillStyle = '#f8f4e9';
+        ctx.fillRect(0, 0, 768, 1024);
+
+        // Paper grain & subtle edge aging
+        const grad = ctx.createRadialGradient(384, 512, 100, 384, 512, 600);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+        grad.addColorStop(1, 'rgba(180, 150, 110, 0.25)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 768, 1024);
+
+        // Inner margin spine shadow
+        const spineShadow = ctx.createLinearGradient(isLeftPage ? 740 : 0, 0, isLeftPage ? 768 : 28, 0);
+        spineShadow.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        spineShadow.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
+        ctx.fillStyle = spineShadow;
+        ctx.fillRect(isLeftPage ? 700 : 0, 0, 68, 1024);
+
+        // Margins
+        const marginX = isLeftPage ? 70 : 90;
+        const maxTextWidth = 580;
+
+        // Running Header
+        ctx.fillStyle = '#7a6a58';
+        ctx.font = 'italic 16px "Cinzel", Georgia, serif';
+        ctx.textAlign = isLeftPage ? 'left' : 'right';
+        const headerText = isLeftPage ? book.title.substring(0, 32) : book.author;
+        ctx.fillText(headerText, isLeftPage ? marginX : marginX + maxTextWidth, 68);
+
+        ctx.strokeStyle = '#d5c7b3';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(marginX, 80);
+        ctx.lineTo(marginX + maxTextWidth, 80);
+        ctx.stroke();
+
+        // Page content
+        const rawText = book.pages[pageIndex] || "End of sample excerpt from Project Gutenberg.";
+        const paragraphs = rawText.split('\n\n');
+
+        let cursorY = 130;
+        ctx.fillStyle = '#1e1610';
+        ctx.textAlign = 'left';
+
+        paragraphs.forEach((para, pIdx) => {
+          if (pIdx === 0 && pageIndex === 0) {
+            // Drop-cap for the very first letter of the book
+            const firstChar = para.charAt(0);
+            const restOfPara = para.slice(1);
+
+            ctx.fillStyle = '#8b261b';
+            ctx.font = 'bold 58px "Cinzel", Georgia, serif';
+            ctx.fillText(firstChar, marginX, cursorY + 44);
+
+            ctx.fillStyle = '#1e1610';
+            ctx.font = '19px "Georgia", serif';
+
+            // Wrap words around drop cap
+            const words = restOfPara.split(' ');
+            let line = '';
+            let lineIdx = 0;
+            for (let w = 0; w < words.length; w++) {
+              const testLine = line + words[w] + ' ';
+              const limit = lineIdx < 2 ? maxTextWidth - 60 : maxTextWidth;
+              const startX = lineIdx < 2 ? marginX + 54 : marginX;
+
+              if (ctx.measureText(testLine).width > limit && w > 0) {
+                ctx.fillText(line.trim(), startX, cursorY);
+                line = words[w] + ' ';
+                cursorY += 28;
+                lineIdx++;
+              } else {
+                line = testLine;
+              }
+            }
+            ctx.fillText(line.trim(), lineIdx < 2 ? marginX + 54 : marginX, cursorY);
+            cursorY += 40;
+          } else {
+            // Normal paragraph
+            ctx.fillStyle = '#1e1610';
+            ctx.font = '19px "Georgia", serif';
+            const words = para.split(' ');
+            let line = '';
+            for (let w = 0; w < words.length; w++) {
+              const testLine = line + words[w] + ' ';
+              if (ctx.measureText(testLine).width > maxTextWidth && w > 0) {
+                ctx.fillText(line.trim(), marginX, cursorY);
+                line = words[w] + ' ';
+                cursorY += 28;
+              } else {
+                line = testLine;
+              }
+            }
+            ctx.fillText(line.trim(), marginX, cursorY);
+            cursorY += 36;
+          }
+        });
+
+        // Bottom Page Number
+        ctx.fillStyle = '#7a6a58';
+        ctx.font = '16px "Cinzel", Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`— ${pageIndex + 1} of ${book.pages.length} —`, 384, 960);
+
+        // Subtle Page Turn Indicator Prompt
+        ctx.fillStyle = 'rgba(212, 175, 55, 0.7)';
+        ctx.font = 'italic 14px system-ui, sans-serif';
+        if (isLeftPage && pageIndex > 0) {
+          ctx.textAlign = 'left';
+          ctx.fillText('◂ Click page to flip back', marginX, 988);
+        } else if (!isLeftPage && pageIndex < book.pages.length - 1) {
+          ctx.textAlign = 'right';
+          ctx.fillText('Click page to flip forward ▸', marginX + maxTextWidth, 988);
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+      }
+    };
+
+    // --- 3. PROCEDURAL WEB AUDIO SYNTHESIZER (Zero external MP3 dependencies) ---
+    class LibraryAudioSynthesizer {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.ctx = new AudioContext();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Gentle parchment paper rustle sound
+      playPageTurn() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const bufferSize = this.ctx.sampleRate * 0.35;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const output = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+
+        const whiteNoise = this.ctx.createBufferSource();
+        whiteNoise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(1600, this.ctx.currentTime + 0.2);
+        filter.Q.setValueAtTime(3, this.ctx.currentTime);
+
+        const gainNode = this.ctx.createGain();
+        gainNode.gain.setValueAtTime(0.01, this.ctx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.18, this.ctx.currentTime + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.32);
+
+        whiteNoise.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(this.ctx.destination);
+
+        whiteNoise.start();
+        whiteNoise.stop(this.ctx.currentTime + 0.35);
+      }
+
+      // Wooden shelf sliding resonance
+      playShelfSlide() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(85, this.ctx.currentTime + 0.4);
+
+        gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.45);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.45);
+      }
+
+      // Celestial glass chime when book is focused
+      playChime() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const freqs = [523.25, 659.25, 783.99, 1046.50];
+        freqs.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.04);
+
+          gain.gain.setValueAtTime(0.04, this.ctx.currentTime + idx * 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.8 + idx * 0.04);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + idx * 0.04);
+          osc.stop(this.ctx.currentTime + 0.9 + idx * 0.04);
+        });
+      }
+    }
+
+    const soundFX = new LibraryAudioSynthesizer();
+
+    // --- 4. ENVIRONMENT PRESET SYSTEM & EXTENSIBILITY HOOKS ---
+    const ENVIRONMENT_PRESETS = {
+      victorian_grand: {
+        name: "Grand Victorian Archive",
+        ambientColor: 0x3d2b1f,
+        ambientIntensity: 0.35,
+        lampColor: 0xffb049,
+        spotlightIntensity: 1.8,
+        fogColor: 0x1a120c,
+        fogDensity: 0.035
+      },
+      cozy_oxford: {
+        name: "Cozy Oxford Study",
+        ambientColor: 0x2e1f14,
+        ambientIntensity: 0.4,
+        lampColor: 0xffaa33,
+        spotlightIntensity: 1.4,
+        fogColor: 0x140c06,
+        fogDensity: 0.03
+      },
+      cyberpunk_vault: {
+        name: "Neon Data Vault",
+        ambientColor: 0x0a1a2f,
+        ambientIntensity: 0.25,
+        lampColor: 0x00e5ff,
+        spotlightIntensity: 2.2,
+        fogColor: 0x050b14,
+        fogDensity: 0.04
+      },
+      monastery: {
+        name: "Monastery Scriptorium",
+        ambientColor: 0x2b2416,
+        ambientIntensity: 0.3,
+        lampColor: 0xff7722,
+        spotlightIntensity: 1.5,
+        fogColor: 0x18140c,
+        fogDensity: 0.04
+      }
+    };
+
+    /**
+     * Modular Architectural Hook: Load Environment Preset
+     * Easily modifies lighting rigs, colors, and atmosphere.
+     */
+    function loadEnvironmentPreset(presetKey) {
+      const preset = ENVIRONMENT_PRESETS[presetKey];
+      if (!preset) return;
+
+      gsap.to(ambientLight.color, { r: ((preset.ambientColor >> 16) & 255) / 255, g: ((preset.ambientColor >> 8) & 255) / 255, b: (preset.ambientColor & 255) / 255, duration: 1 });
+      gsap.to(ambientLight, { intensity: preset.ambientIntensity, duration: 1 });
+      gsap.to(readingSpotlight, { intensity: preset.spotlightIntensity, duration: 1 });
+      gsap.to(deskLampLight.color, { r: ((preset.lampColor >> 16) & 255) / 255, g: ((preset.lampColor >> 8) & 255) / 255, b: (preset.lampColor & 255) / 255, duration: 1 });
+
+      if (scene.fog) {
+        gsap.to(scene.fog.color, { r: ((preset.fogColor >> 16) & 255) / 255, g: ((preset.fogColor >> 8) & 255) / 255, b: (preset.fogColor & 255) / 255, duration: 1 });
+        scene.fog.density = preset.fogDensity;
+      }
+    }
+
+    /**
+     * Modular Architectural Hook: Load Custom Scanned Environment (GLTF/GLB)
+     * For future iterations to inject photogrammetry scans or AI NeRF models.
+     */
+    function loadCustomEnvironment(gltfPath) {
+      console.log(`[Architecture Hook] loadCustomEnvironment ready for external model: ${gltfPath}`);
+      // In future: const loader = new THREE.GLTFLoader(); loader.load(gltfPath, (gltf) => scene.add(gltf.scene));
+    }
+
+    // --- 5. SCENE INITIALIZATION & LIGHTING RIG ---
+    const canvas = document.getElementById('webgl-canvas');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x1a120c, 0.035);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.6, 2.6); // Default eye level in front of bookcase
+
+    // WebGL Renderer Setup with WebXR enabled
+    const renderer = new THREE.WebGLRenderer({
+      canvas: canvas,
+      antialias: true,
+      powerPreference: 'high-performance'
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.xr.enabled = true;
+
+    // --- ROBUST WEBXR VRBUTTON IMPLEMENTATION (Works across all browsers & CDNs) ---
+    const VRButton = {
+      createButton: function(renderer) {
+        const button = document.createElement('button');
+        button.id = 'VRButton';
+
+        function showEnterVR() {
+          let currentSession = null;
+          async function onSessionStarted(session) {
+            session.addEventListener('end', onSessionEnded);
+            await renderer.xr.setSession(session);
+            button.textContent = 'EXIT VR';
+            currentSession = session;
+          }
+          function onSessionEnded() {
+            currentSession.removeEventListener('end', onSessionEnded);
+            button.textContent = 'ENTER VR';
+            currentSession = null;
+          }
+          button.style.display = '';
+          button.style.cursor = 'pointer';
+          button.textContent = 'ENTER VR';
+
+          button.onclick = function() {
+            if (currentSession === null) {
+              const sessionInit = { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'] };
+              navigator.xr.requestSession('immersive-vr', sessionInit).then(onSessionStarted).catch((err) => {
+                console.warn('VR session request failed:', err);
+              });
+            } else {
+              currentSession.end();
+            }
+          };
+        }
+
+        function showWebXRNotFound() {
+          button.style.display = '';
+          button.style.cursor = 'default';
+          button.style.opacity = '0.6';
+          button.textContent = 'VR READY (DESKTOP MODE)';
+          button.title = 'WebXR headset supported. Connect Meta Quest or WebXR device for immersive mode.';
+        }
+
+        if ('xr' in navigator) {
+          navigator.xr.isSessionSupported('immersive-vr').then(function(supported) {
+            supported ? showEnterVR() : showWebXRNotFound();
+          }).catch(showWebXRNotFound);
+          return button;
+        } else {
+          showWebXRNotFound();
+          return button;
+        }
+      }
+    };
+    THREE.VRButton = VRButton;
+
+    // Attach WebXR VRButton
+    document.body.appendChild(THREE.VRButton.createButton(renderer));
+
+    // Warm Ambient Light
+    const ambientLight = new THREE.AmbientLight(0x3d2b1f, 0.35);
+    scene.add(ambientLight);
+
+    // Key Directional Chandelier Light (casts soft shadows across bookshelves)
+    const keySpotlight = new THREE.SpotLight(0xffecd0, 1.6, 25, Math.PI / 3.5, 0.45, 1.2);
+    keySpotlight.position.set(0, 5.2, 2.8);
+    keySpotlight.target.position.set(0, 1.4, -1.8);
+    keySpotlight.castShadow = true;
+    keySpotlight.shadow.mapSize.width = 1024;
+    keySpotlight.shadow.mapSize.height = 1024;
+    keySpotlight.shadow.bias = -0.0005;
+    scene.add(keySpotlight);
+    scene.add(keySpotlight.target);
+
+    // Warm Book Reading Spotlight (focused onto the active reading area)
+    const readingSpotlight = new THREE.SpotLight(0xfff1d6, 1.8, 12, Math.PI / 4, 0.5, 1.0);
+    readingSpotlight.position.set(0, 3.2, 1.2);
+    readingSpotlight.target.position.set(0, 1.4, -0.6);
+    scene.add(readingSpotlight);
+    scene.add(readingSpotlight.target);
+
+    // Desk Reading Lamp (atmospheric warm orange-amber point light)
+    const deskLampLight = new THREE.PointLight(0xffb049, 1.2, 6, 2);
+    deskLampLight.position.set(-2.2, 1.6, 0.8);
+    deskLampLight.castShadow = true;
+    scene.add(deskLampLight);
+
+    // Soft cool moonlight fill from window
+    const moonFillLight = new THREE.DirectionalLight(0x5588cc, 0.3);
+    moonFillLight.position.set(4, 5, 2);
+    scene.add(moonFillLight);
+
+    // --- 6. PROCEDURAL ROOM ARCHITECTURE ---
+    const roomGroup = new THREE.Group();
+    scene.add(roomGroup);
+
+    // Floor (rich parquet wood)
+    const floorGeo = new THREE.PlaneGeometry(16, 16);
+    const floorMat = new THREE.MeshStandardMaterial({
+      map: TextureGenerator.generateWoodFloor(),
+      roughness: 0.35,
+      metalness: 0.1
+    });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    roomGroup.add(floor);
+
+    // Ceiling (coffered wood)
+    const ceilingGeo = new THREE.PlaneGeometry(16, 16);
+    const ceilingMat = new THREE.MeshStandardMaterial({
+      color: 0x180d07,
+      roughness: 0.8
+    });
+    const ceiling = new THREE.Mesh(ceilingGeo, ceilingMat);
+    ceiling.position.y = 5.2;
+    ceiling.rotation.x = Math.PI / 2;
+    roomGroup.add(ceiling);
+
+    // Back Wall (behind bookshelves with Victorian wallpaper)
+    const wallMat = new THREE.MeshStandardMaterial({
+      map: TextureGenerator.generateWallpaper(),
+      roughness: 0.75
+    });
+    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 6), wallMat);
+    backWall.position.set(0, 2.6, -3.2);
+    backWall.receiveShadow = true;
+    roomGroup.add(backWall);
+
+    // Left and Right Walls
+    const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 6), wallMat);
+    leftWall.position.set(-5.5, 2.6, 0);
+    leftWall.rotation.y = Math.PI / 2;
+    roomGroup.add(leftWall);
+
+    const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 6), wallMat);
+    rightWall.position.set(5.5, 2.6, 0);
+    rightWall.rotation.y = -Math.PI / 2;
+    roomGroup.add(rightWall);
+
+    // Classical Arched Window on Right Wall
+    const windowFrameGeo = new THREE.BoxGeometry(0.1, 3.2, 1.8);
+    const windowFrameMat = new THREE.MeshStandardMaterial({ color: 0x22130c, roughness: 0.5 });
+    const windowFrame = new THREE.Mesh(windowFrameGeo, windowFrameMat);
+    windowFrame.position.set(5.42, 2.6, 0.8);
+    roomGroup.add(windowFrame);
+
+    const windowGlassGeo = new THREE.PlaneGeometry(1.6, 3.0);
+    const windowGlassMat = new THREE.MeshBasicMaterial({
+      color: 0x224466,
+      transparent: true,
+      opacity: 0.4
+    });
+    const windowGlass = new THREE.Mesh(windowGlassGeo, windowGlassMat);
+    windowGlass.position.set(5.4, 2.6, 0.8);
+    windowGlass.rotation.y = -Math.PI / 2;
+    roomGroup.add(windowGlass);
+
+    // Antique Reading Chair in Corner
+    const chairGroup = new THREE.Group();
+    const chairMat = new THREE.MeshStandardMaterial({ color: 0x471d18, roughness: 0.6 });
+    const woodTrimMat = new THREE.MeshStandardMaterial({ color: 0x1f1008, roughness: 0.4 });
+
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.18, 0.8), chairMat);
+    seat.position.y = 0.45;
+    chairGroup.add(seat);
+
+    const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.9, 0.14), chairMat);
+    backrest.position.set(0, 0.95, -0.33);
+    chairGroup.add(backrest);
+
+    // Armrests
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.35, 0.75), woodTrimMat);
+    armL.position.set(-0.42, 0.65, 0);
+    const armR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.35, 0.75), woodTrimMat);
+    armR.position.set(0.42, 0.65, 0);
+    chairGroup.add(armL, armR);
+
+    // Brass Desk Lamp on Table
+    const tableGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.7, 16);
+    const table = new THREE.Mesh(tableGeo, woodTrimMat);
+    table.position.set(-2.2, 0.35, 0.8);
+    table.castShadow = true;
+    roomGroup.add(table);
+
+    const lampShadeGeo = new THREE.ConeGeometry(0.2, 0.22, 16, 1, true);
+    const lampShadeMat = new THREE.MeshStandardMaterial({ color: 0x2e6f40, roughness: 0.3, emissive: 0x113318 });
+    const lampShade = new THREE.Mesh(lampShadeGeo, lampShadeMat);
+    lampShade.position.set(-2.2, 1.6, 0.8);
+    roomGroup.add(lampShade);
+
+    chairGroup.position.set(-2.2, 0, 1.8);
+    chairGroup.rotation.y = Math.PI / 4;
+    roomGroup.add(chairGroup);
+
+    // Floating Atmospheric Dust Motes
+    const motesGeo = new THREE.BufferGeometry();
+    const motesCount = 180;
+    const motesPos = new Float32Array(motesCount * 3);
+    for (let i = 0; i < motesCount * 3; i += 3) {
+      motesPos[i] = (Math.random() - 0.5) * 6;
+      motesPos[i + 1] = Math.random() * 3.5 + 0.2;
+      motesPos[i + 2] = (Math.random() - 0.5) * 5;
+    }
+    motesGeo.setAttribute('position', new THREE.BufferAttribute(motesPos, 3));
+    const motesMat = new THREE.PointsMaterial({
+      color: 0xffd9aa,
+      size: 0.035,
+      transparent: true,
+      opacity: 0.55
+    });
+    const dustMotes = new THREE.Points(motesGeo, motesMat);
+    scene.add(dustMotes);
+
+    // --- 7. GRAND MULTI-TIER BOOKSHELF ARCHITECTURE ---
+    const bookshelfGroup = new THREE.Group();
+    bookshelfGroup.position.set(0, 0, -1.8);
+    scene.add(bookshelfGroup);
+
+    const mahoganyMat = new THREE.MeshStandardMaterial({
+      map: TextureGenerator.generateMahoganyWood(),
+      roughness: 0.45,
+      metalness: 0.05
+    });
+
+    const SHELF_WIDTH = 4.2;
+    const SHELF_DEPTH = 0.55;
+    const TIER_HEIGHTS = [2.2, 1.4, 0.6]; // Tier 0 (Top), Tier 1 (Mid), Tier 2 (Bottom)
+
+    // Backing panel of the bookcase
+    const bookcaseBack = new THREE.Mesh(
+      new THREE.BoxGeometry(SHELF_WIDTH, 2.9, 0.08),
+      mahoganyMat
+    );
+    bookcaseBack.position.set(0, 1.45, -SHELF_DEPTH / 2);
+    bookcaseBack.receiveShadow = true;
+    bookshelfGroup.add(bookcaseBack);
+
+    // Outer frame vertical pilasters
+    const leftPilaster = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.1, SHELF_DEPTH + 0.06), mahoganyMat);
+    leftPilaster.position.set(-SHELF_WIDTH / 2, 1.45, 0);
+    const rightPilaster = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.1, SHELF_DEPTH + 0.06), mahoganyMat);
+    rightPilaster.position.set(SHELF_WIDTH / 2, 1.45, 0);
+    bookshelfGroup.add(leftPilaster, rightPilaster);
+
+    // Top crown molding
+    const crownMolding = new THREE.Mesh(new THREE.BoxGeometry(SHELF_WIDTH + 0.3, 0.2, SHELF_DEPTH + 0.12), mahoganyMat);
+    crownMolding.position.set(0, 2.95, 0);
+    bookshelfGroup.add(crownMolding);
+
+    // Interactive shelf tiers & boards
+    const shelfTiers = []; // Groups for each tier
+    const clickableShelves = []; // Raycast targets for shelf activation
+
+    TIER_HEIGHTS.forEach((tierY, tierIndex) => {
+      // Horizontal shelf board
+      const shelfBoard = new THREE.Mesh(
+        new THREE.BoxGeometry(SHELF_WIDTH, 0.08, SHELF_DEPTH),
+        mahoganyMat
+      );
+      shelfBoard.position.set(0, tierY - 0.04, 0);
+      shelfBoard.receiveShadow = true;
+      shelfBoard.castShadow = true;
+      shelfBoard.userData = { isShelfTier: true, tierIndex: tierIndex };
+      bookshelfGroup.add(shelfBoard);
+      clickableShelves.push(shelfBoard);
+
+      // Tier container group (houses the 4 hero books + decorative filler)
+      const tierGroup = new THREE.Group();
+      tierGroup.position.set(0, tierY, 0);
+      tierGroup.userData = { tierIndex: tierIndex, isActivated: false };
+      bookshelfGroup.add(tierGroup);
+      shelfTiers.push(tierGroup);
+
+      // Gold brass tier label plaque
+      const plaqueCanvas = document.createElement('canvas');
+      plaqueCanvas.width = 256;
+      plaqueCanvas.height = 64;
+      const pctx = plaqueCanvas.getContext('2d');
+      pctx.fillStyle = '#b8860b';
+      pctx.fillRect(0, 0, 256, 64);
+      pctx.fillStyle = '#1a0f08';
+      pctx.font = 'bold 20px "Cinzel", Georgia, serif';
+      pctx.textAlign = 'center';
+      const tierNames = ["I. VICTORIAN NOVELS", "II. GOTHIC & SPECULATIVE", "III. WORLD CLASSICS"];
+      pctx.fillText(tierNames[tierIndex], 128, 40);
+      const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
+      const plaqueMat = new THREE.MeshBasicMaterial({ map: plaqueTex });
+      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.65, 0.14), plaqueMat);
+      plaque.position.set(0, tierY - 0.04, SHELF_DEPTH / 2 + 0.01);
+      plaque.userData = { isShelfTier: true, tierIndex: tierIndex };
+      bookshelfGroup.add(plaque);
+      clickableShelves.push(plaque);
+    });
+
+    // --- 8. INSTANCED DECORATIVE BOOKS (High Performance 90 FPS VR Spines) ---
+    // Fill the shelves with hundreds of background vintage books
+    const instancedCount = 120;
+    const instBookGeo = new THREE.BoxGeometry(0.06, 0.38, 0.28);
+    const instBookMat = new THREE.MeshStandardMaterial({
+      roughness: 0.6,
+      metalness: 0.1
+    });
+    const instancedBooks = new THREE.InstancedMesh(instBookGeo, instBookMat, instancedCount);
+    instancedBooks.castShadow = true;
+    instancedBooks.receiveShadow = true;
+
+    const dummy = new THREE.Object3D();
+    const vintageColors = [0x5c1d1d, 0x1d3c2a, 0x1d2c47, 0x3d2b1f, 0x4a3b2c, 0x2b1d3a, 0x614022];
+
+    let instIdx = 0;
+    TIER_HEIGHTS.forEach((tierY, tierIdx) => {
+      for (let i = 0; i < 40; i++) {
+        const x = -1.85 + (i / 40) * 3.7;
+        // Skip spaces where the 4 hero books sit
+        const isNearHero = [-1.1, -0.37, 0.37, 1.1].some(hx => Math.abs(x - hx) < 0.14);
+        if (isNearHero) continue;
+
+        const hVar = 0.85 + Math.random() * 0.25;
+        dummy.scale.set(0.7 + Math.random() * 0.6, hVar, 0.9 + Math.random() * 0.2);
+        dummy.position.set(x, tierY + 0.19 * hVar, -0.06 + (Math.random() - 0.5) * 0.04);
+        dummy.rotation.y = (Math.random() - 0.5) * 0.05;
+        dummy.updateMatrix();
+
+        instancedBooks.setMatrixAt(instIdx, dummy.matrix);
+        const col = new THREE.Color(vintageColors[Math.floor(Math.random() * vintageColors.length)]);
+        instancedBooks.setColorAt(instIdx, col);
+        instIdx++;
+      }
+    });
+    instancedBooks.instanceMatrix.needsUpdate = true;
+    if (instancedBooks.instanceColor) instancedBooks.instanceColor.needsUpdate = true;
+    bookshelfGroup.add(instancedBooks);
+
+    // --- 9. HERO INTERACTIVE 3D BOOKS GENERATION ---
+    const heroBooks = [];
+    const clickableBooks = [];
+
+    // Dimensions for hero books
+    const BOOK_W = 0.24;
+    const BOOK_H = 0.42;
+    const BOOK_D = 0.34;
+
+    GUTENBERG_LIBRARY.forEach((bookData) => {
+      const bookGroup = new THREE.Group();
+
+      // Geometry for book spine & pages block
+      const bookBlockGeo = new THREE.BoxGeometry(BOOK_W, BOOK_H, BOOK_D);
+
+      // Book cover textures (Front, Back, Spine)
+      const coverTexture = TextureGenerator.generateBookCover(bookData);
+      const spineMat = new THREE.MeshStandardMaterial({
+        color: bookData.spineColor,
+        roughness: 0.5,
+        metalness: 0.1
+      });
+      const pagesTrimMat = new THREE.MeshStandardMaterial({
+        color: 0xede4ce,
+        roughness: 0.85
+      });
+      const frontCoverMat = new THREE.MeshStandardMaterial({
+        map: coverTexture,
+        roughness: 0.45
+      });
+
+      // Material index mapping for BoxGeometry: [right, left, top, bottom, front, back]
+      const bookMaterials = [
+        frontCoverMat, // Right (front cover when facing viewer)
+        spineMat,      // Left (spine)
+        pagesTrimMat,  // Top
+        pagesTrimMat,  // Bottom
+        frontCoverMat, // Front
+        spineMat       // Back
+      ];
+
+      const bookMesh = new THREE.Mesh(bookBlockGeo, bookMaterials);
+      bookMesh.castShadow = true;
+      bookMesh.receiveShadow = true;
+      bookMesh.position.y = BOOK_H / 2;
+      bookGroup.add(bookMesh);
+
+      // Coordinates on shelf: 4 books per shelf
+      const xPositions = [-1.1, -0.37, 0.37, 1.1];
+      const posX = xPositions[bookData.shelfPosition];
+      const restingZ = 0.0;
+
+      bookGroup.position.set(posX, 0, restingZ);
+      bookGroup.userData = {
+        bookData: bookData,
+        restingX: posX,
+        restingZ: restingZ,
+        tierIndex: bookData.shelfTier,
+        isExtruded: false
+      };
+
+      // Add to tier group
+      shelfTiers[bookData.shelfTier].add(bookGroup);
+      heroBooks.push(bookGroup);
+      clickableBooks.push(bookMesh);
+      bookMesh.userData.parentBookGroup = bookGroup;
+    });
+
+    // --- STEP 3: 2.5D INTERACTIVE FLIPBOOK RIG ---
+    const flipbookRig = new THREE.Group();
+    flipbookRig.visible = false;
+    scene.add(flipbookRig);
+
+    // Book Dimensions when open
+    const PAGE_W = 0.46;
+    const PAGE_H = 0.64;
+
+    // Leather book material
+    const bookCoverMat = new THREE.MeshStandardMaterial({
+      color: 0x22130c,
+      roughness: 0.5,
+      metalness: 0.1
+    });
+
+    // 1. Continuous open leather binding board (lies underneath both left & right pages)
+    const bookBoardGeo = new THREE.BoxGeometry(PAGE_W * 2 + 0.04, PAGE_H + 0.04, 0.014);
+    const bookBoardMesh = new THREE.Mesh(bookBoardGeo, bookCoverMat);
+    bookBoardMesh.position.set(0, 0, -0.008);
+    bookBoardMesh.castShadow = true;
+    flipbookRig.add(bookBoardMesh);
+
+    // 2. Center Spine ridge
+    const spineGeo = new THREE.CylinderGeometry(0.014, 0.014, PAGE_H + 0.03, 16);
+    const spineMesh = new THREE.Mesh(spineGeo, bookCoverMat);
+    spineMesh.position.set(0, 0, 0.001);
+    flipbookRig.add(spineMesh);
+
+    // 3. Base Left Page (displays current left page canvas texture)
+    const leftPageMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.FrontSide
+    });
+    const leftPageMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(PAGE_W, PAGE_H),
+      leftPageMat
+    );
+    leftPageMesh.position.set(-PAGE_W / 2, 0, 0.003);
+    leftPageMesh.userData = { isPageClickable: true, isLeft: true };
+    flipbookRig.add(leftPageMesh);
+
+    // 4. Base Right Page (displays current right page canvas texture)
+    const rightPageMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.FrontSide
+    });
+    const rightPageMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(PAGE_W, PAGE_H),
+      rightPageMat
+    );
+    rightPageMesh.position.set(PAGE_W / 2, 0, 0.003);
+    rightPageMesh.userData = { isPageClickable: true, isLeft: false };
+    flipbookRig.add(rightPageMesh);
+
+    // 5. Animated 2.5D Flipping Page (Hinged at spine x=0)
+    const flippingPagePivot = new THREE.Group();
+    flippingPagePivot.position.set(0, 0, 0.007);
+    flippingPagePivot.visible = false;
+    flipbookRig.add(flippingPagePivot);
+
+    const flipPageMatFront = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.FrontSide
+    });
+    const flipPageMatBack = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.FrontSide
+    });
+
+    // Double-sided flipping leaf
+    const flippingLeafFront = new THREE.Mesh(new THREE.PlaneGeometry(PAGE_W, PAGE_H), flipPageMatFront);
+    flippingLeafFront.position.set(PAGE_W / 2, 0, 0.001);
+    const flippingLeafBack = new THREE.Mesh(new THREE.PlaneGeometry(PAGE_W, PAGE_H), flipPageMatBack);
+    flippingLeafBack.position.set(PAGE_W / 2, 0, -0.001);
+    flippingLeafBack.rotation.y = Math.PI; // Face reverse
+    flippingPagePivot.add(flippingLeafFront, flippingLeafBack);
+
+    // 6. Floating 3D "Close" Ribbon Button above the book (clickable in VR & Desktop)
+    const closeBtnCanvas = document.createElement('canvas');
+    closeBtnCanvas.width = 256;
+    closeBtnCanvas.height = 64;
+    const cbctx = closeBtnCanvas.getContext('2d');
+    cbctx.fillStyle = '#8b261b';
+    cbctx.fillRect(0, 0, 256, 64);
+    cbctx.strokeStyle = '#d4af37';
+    cbctx.lineWidth = 4;
+    cbctx.strokeRect(4, 4, 248, 56);
+    cbctx.fillStyle = '#ffffff';
+    cbctx.font = 'bold 22px "Cinzel", Georgia, serif';
+    cbctx.textAlign = 'center';
+    cbctx.fillText('✕ RETURN TO SHELF', 128, 40);
+    const closeBtnTex = new THREE.CanvasTexture(closeBtnCanvas);
+    const closeBtnMat = new THREE.MeshBasicMaterial({ map: closeBtnTex });
+    const closeBtn3DMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.1), closeBtnMat);
+    closeBtn3DMesh.position.set(0, PAGE_H / 2 + 0.12, 0.02);
+    closeBtn3DMesh.userData = { is3DCloseBtn: true };
+    flipbookRig.add(closeBtn3DMesh);
+
+    // Active Reader State
+    let activeBook = null;
+    let activePageIndex = 0;
+    let isFlippingPage = false;
+    let isBookReaderOpen = false;
+
+    /**
+     * Update textures for 2.5D open pages
+     */
+    function updateReaderPageTextures() {
+      if (!activeBook) return;
+
+      const leftTex = TextureGenerator.generatePageTexture(activeBook, activePageIndex, true);
+      const rightTex = TextureGenerator.generatePageTexture(activeBook, activePageIndex + 1, false);
+
+      leftPageMat.map = leftTex;
+      leftPageMat.needsUpdate = true;
+      rightPageMat.map = rightTex;
+      rightPageMat.needsUpdate = true;
+
+      // Update HUD text
+      document.getElementById('reader-title').textContent = activeBook.title;
+      document.getElementById('reader-author').textContent = `by ${activeBook.author} (${activeBook.year})`;
+      document.getElementById('reader-pages-info').textContent = `Page ${activePageIndex + 1} & ${Math.min(activePageIndex + 2, activeBook.pages.length)} of ${activeBook.pages.length} • Click Right Page to Flip Forward, Left Page to Flip Back`;
+    }
+
+    /**
+     * Interactive Page Turn Animation (Curved 180-degree trajectory)
+     */
+    function flipPage(forward = true) {
+      if (!activeBook || isFlippingPage) return;
+
+      if (forward) {
+        if (activePageIndex + 2 >= activeBook.pages.length) return; // End of book
+      } else {
+        if (activePageIndex <= 0) return; // Beginning of book
+      }
+
+      isFlippingPage = true;
+      soundFX.playPageTurn();
+
+      if (forward) {
+        // Flipping from Right to Left
+        flipPageMatFront.map = TextureGenerator.generatePageTexture(activeBook, activePageIndex + 1, false);
+        flipPageMatBack.map = TextureGenerator.generatePageTexture(activeBook, activePageIndex + 2, true);
+        flipPageMatFront.needsUpdate = true;
+        flipPageMatBack.needsUpdate = true;
+
+        flippingPagePivot.visible = true;
+        flippingPagePivot.rotation.y = 0;
+
+        // GSAP curved page flip rotation with slight Z arch
+        gsap.timeline({
+          onComplete: () => {
+            activePageIndex += 2;
+            updateReaderPageTextures();
+            flippingPagePivot.visible = false;
+            flippingPagePivot.rotation.y = 0;
+            isFlippingPage = false;
+          }
+        })
+        .to(flippingPagePivot.rotation, {
+          y: -Math.PI,
+          duration: 0.75,
+          ease: "power2.inOut"
+        })
+        .to(flippingLeafFront.position, {
+          z: 0.05,
+          yoyo: true,
+          repeat: 1,
+          duration: 0.375,
+          ease: "sine.inOut"
+        }, 0);
+
+      } else {
+        // Flipping from Left to Right (backward)
+        flipPageMatFront.map = TextureGenerator.generatePageTexture(activeBook, activePageIndex, false);
+        flipPageMatBack.map = TextureGenerator.generatePageTexture(activeBook, activePageIndex - 1, true);
+        flipPageMatFront.needsUpdate = true;
+        flipPageMatBack.needsUpdate = true;
+
+        flippingPagePivot.visible = true;
+        flippingPagePivot.rotation.y = -Math.PI;
+
+        gsap.timeline({
+          onComplete: () => {
+            activePageIndex = Math.max(0, activePageIndex - 2);
+            updateReaderPageTextures();
+            flippingPagePivot.visible = false;
+            flippingPagePivot.rotation.y = 0;
+            isFlippingPage = false;
+          }
+        })
+        .to(flippingPagePivot.rotation, {
+          y: 0,
+          duration: 0.75,
+          ease: "power2.inOut"
+        })
+        .to(flippingLeafFront.position, {
+          z: 0.05,
+          yoyo: true,
+          repeat: 1,
+          duration: 0.375,
+          ease: "sine.inOut"
+        }, 0);
+      }
+    }
+
+    // --- 11. STEP 1: SHELF ACTIVATION MECHANICS ---
+    let activeShelfTierIndex = null;
+
+    function activateShelfTier(tierIndex, playSound = true) {
+      if (isBookReaderOpen) return;
+
+      if (playSound) soundFX.playShelfSlide();
+      activeShelfTierIndex = tierIndex;
+
+      shelfTiers.forEach((tierGroup, idx) => {
+        const isCurrent = idx === tierIndex;
+        tierGroup.userData.isActivated = isCurrent;
+
+        // Slide the 4 hero books on this shelf outward along Z in a staggered arc
+        tierGroup.children.forEach((child, bIdx) => {
+          if (child.userData && child.userData.bookData) {
+            const targetZ = isCurrent ? 0.38 : 0.0;
+            const targetY = isCurrent ? 0.04 : 0.0;
+            const targetRotX = isCurrent ? 0.08 : 0.0;
+
+            gsap.to(child.position, {
+              z: targetZ,
+              y: targetY,
+              duration: 0.65,
+              delay: bIdx * 0.06,
+              ease: isCurrent ? "back.out(1.5)" : "power2.inOut"
+            });
+
+            gsap.to(child.rotation, {
+              x: targetRotX,
+              duration: 0.65,
+              delay: bIdx * 0.06,
+              ease: "power2.out"
+            });
+          }
+        });
+      });
+
+      // Update HUD shelf buttons
+      document.querySelectorAll('[data-tier]').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.tier) === tierIndex);
+      });
+    }
+
+    // --- 12. STEP 2: BOOK SELECTION & ZOOM TO EYE LEVEL ---
+    function selectAndOpenBook(bookData) {
+      if (isBookReaderOpen) return;
+      isBookReaderOpen = true;
+      activeBook = bookData;
+      activePageIndex = 0;
+
+      soundFX.playChime();
+
+      // Dampen background lighting for reading intimacy
+      gsap.to(ambientLight, { intensity: 0.15, duration: 0.8 });
+      gsap.to(keySpotlight, { intensity: 0.4, duration: 0.8 });
+      gsap.to(readingSpotlight, { intensity: 2.4, duration: 0.8 });
+
+      // Position the 2.5D flipbook directly in front of the camera or eye level
+      const eyePos = new THREE.Vector3();
+      const eyeDir = new THREE.Vector3();
+      camera.getWorldPosition(eyePos);
+      camera.getWorldDirection(eyeDir);
+
+      // Place book 0.9m in front of camera, angled nicely for reading
+      const targetPos = eyePos.clone().add(eyeDir.clone().multiplyScalar(0.95));
+      targetPos.y = Math.max(targetPos.y - 0.05, 1.35);
+
+      flipbookRig.position.copy(targetPos);
+      flipbookRig.lookAt(eyePos.x, targetPos.y + 0.15, eyePos.z);
+      flipbookRig.rotation.x += 0.22; // Natural tilt toward reader
+      flipbookRig.scale.set(0.001, 0.001, 0.001);
+      flipbookRig.visible = true;
+
+      // Update pages texture
+      updateReaderPageTextures();
+
+      // Smooth book zoom & open animation
+      gsap.to(flipbookRig.scale, {
+        x: 1,
+        y: 1,
+        z: 1,
+        duration: 0.75,
+        ease: "back.out(1.2)"
+      });
+
+      // Show HUD banner
+      document.getElementById('reader-overlay').classList.add('active');
+    }
+
+    /**
+     * Close Reader & Return Book to Shelf (Step 3 Close)
+     */
+    function closeReader() {
+      if (!isBookReaderOpen) return;
+      soundFX.playShelfSlide();
+
+      // Smooth book closing & shrink animation back to shelf
+      gsap.to(flipbookRig.scale, {
+        x: 0.001,
+        y: 0.001,
+        z: 0.001,
+        duration: 0.45,
+        ease: "power2.in",
+        onComplete: () => {
+          flipbookRig.visible = false;
+          flipbookRig.scale.set(1, 1, 1);
+          isBookReaderOpen = false;
+          activeBook = null;
+        }
+      });
+
+      // Restore room lighting
+      gsap.to(ambientLight, { intensity: 0.35, duration: 0.8 });
+      gsap.to(keySpotlight, { intensity: 1.6, duration: 0.8 });
+      gsap.to(readingSpotlight, { intensity: 1.8, duration: 0.8 });
+
+      // Hide HUD banner
+      document.getElementById('reader-overlay').classList.remove('active');
+    }
+
+    // --- 13. DUAL CONTROL SCHEMES (Desktop & WebXR) ---
+    // 1. Desktop Controls: OrbitControls + PointerLockControls Walk Mode
+    const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+    orbitControls.enableDamping = true;
+    orbitControls.dampingFactor = 0.06;
+    orbitControls.maxPolarAngle = Math.PI / 2 + 0.05; // Prevent dipping beneath floor
+    orbitControls.minDistance = 0.8;
+    orbitControls.maxDistance = 5.5;
+    orbitControls.target.set(0, 1.4, -1.8); // Focus on bookshelf
+
+    const pointerLockControls = new THREE.PointerLockControls(camera, document.body);
+    let isFpsMode = false;
+
+    // Keyboard WASD Movement state
+    const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
+    window.addEventListener('keydown', (e) => {
+      if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+      if (e.code === 'Escape' && isBookReaderOpen) closeReader();
+    });
+    window.addEventListener('keyup', (e) => {
+      if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+    });
+
+    const moveVelocity = new THREE.Vector3();
+    const moveDirection = new THREE.Vector3();
+
+    // 2. Desktop Raycaster for Hover & Click
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let hoveredObject = null;
+
+    function onPointerMove(event) {
+      if (event.target !== canvas && !isFpsMode) {
+        const tooltip = document.getElementById('shelf-tooltip');
+        if (tooltip) tooltip.classList.remove('active');
+        return;
+      }
+
+      if (isFpsMode) {
+        mouse.x = 0;
+        mouse.y = 0;
+      } else {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      }
+
+      // Check hovers when reader is closed
+      if (!isBookReaderOpen) {
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects([...clickableBooks, ...clickableShelves], true);
+        const tooltip = document.getElementById('shelf-tooltip');
+
+        if (intersects.length > 0) {
+          const hit = intersects[0].object;
+          document.body.style.cursor = 'pointer';
+
+          if (hit.userData.isShelfTier) {
+            tooltip.textContent = `🏛️ Shelf Tier ${hit.userData.tierIndex + 1} — Click to slide books out`;
+            tooltip.classList.add('active');
+          } else if (hit.userData.parentBookGroup) {
+            const b = hit.userData.parentBookGroup.userData.bookData;
+            tooltip.textContent = `📖 ${b.title} (${b.author}) — Click to read`;
+            tooltip.classList.add('active');
+          }
+        } else {
+          document.body.style.cursor = 'default';
+          tooltip.classList.remove('active');
+        }
+      }
+    }
+
+    function onPointerClick(event) {
+      // Prevent canvas raycasting when clicking HUD overlay elements
+      if (event.target !== canvas) return;
+
+      if (isFpsMode) {
+        mouse.x = 0;
+        mouse.y = 0;
+      } else {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      }
+
+      raycaster.setFromCamera(mouse, camera);
+
+      if (isBookReaderOpen) {
+        // Raycast against flipbook pages & 3D close button
+        const pageIntersects = raycaster.intersectObjects([leftPageMesh, rightPageMesh, closeBtn3DMesh], true);
+        if (pageIntersects.length > 0) {
+          const hit = pageIntersects[0].object;
+          if (hit.userData.is3DCloseBtn) {
+            closeReader();
+          } else if (hit.userData.isPageClickable) {
+            flipPage(!hit.userData.isLeft);
+          }
+        }
+        return;
+      }
+
+      // Raycast against shelves & books
+      const intersects = raycaster.intersectObjects([...clickableBooks, ...clickableShelves], true);
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+
+        if (hit.userData.isShelfTier) {
+          activateShelfTier(hit.userData.tierIndex);
+        } else if (hit.userData.parentBookGroup) {
+          const parentGroup = hit.userData.parentBookGroup;
+          // If shelf is not activated yet, activate it first
+          if (activeShelfTierIndex !== parentGroup.userData.tierIndex) {
+            activateShelfTier(parentGroup.userData.tierIndex);
+          }
+          selectAndOpenBook(parentGroup.userData.bookData);
+        }
+      }
+    }
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('click', onPointerClick);
+
+    // --- 14. WEBXR / VR CONTROLLER RAYCASTER & INTERACTION ---
+    const controller0 = renderer.xr.getController(0);
+    const controller1 = renderer.xr.getController(1);
+    scene.add(controller0, controller1);
+
+    // Visual Ray Pointer line extending from VR controllers
+    function buildControllerRay() {
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -4.5)
+      ]);
+      const material = new THREE.LineBasicMaterial({
+        color: 0xd4af37,
+        transparent: true,
+        opacity: 0.75
+      });
+      return new THREE.Line(geometry, material);
+    }
+
+    controller0.add(buildControllerRay());
+    controller1.add(buildControllerRay());
+
+    // VR Controller Trigger Click Handler
+    function handleXRTriggerSelect(event) {
+      const controller = event.target;
+      const tempMatrix = new THREE.Matrix4();
+      tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+      const rayOrigin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+      const rayDirection = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
+
+      const xrRaycaster = new THREE.Raycaster(rayOrigin, rayDirection);
+
+      if (isBookReaderOpen) {
+        const pageHits = xrRaycaster.intersectObjects([leftPageMesh, rightPageMesh, closeBtn3DMesh], true);
+        if (pageHits.length > 0) {
+          const hit = pageHits[0].object;
+          if (hit.userData.is3DCloseBtn) {
+            closeReader();
+          } else if (hit.userData.isPageClickable) {
+            flipPage(!hit.userData.isLeft);
+          }
+        }
+        return;
+      }
+
+      const hits = xrRaycaster.intersectObjects([...clickableBooks, ...clickableShelves], true);
+      if (hits.length > 0) {
+        const hit = hits[0].object;
+        if (hit.userData.isShelfTier) {
+          activateShelfTier(hit.userData.tierIndex);
+        } else if (hit.userData.parentBookGroup) {
+          const parentGroup = hit.userData.parentBookGroup;
+          if (activeShelfTierIndex !== parentGroup.userData.tierIndex) {
+            activateShelfTier(parentGroup.userData.tierIndex);
+          }
+          selectAndOpenBook(parentGroup.userData.bookData);
+        }
+      }
+    }
+
+    controller0.addEventListener('selectstart', handleXRTriggerSelect);
+    controller1.addEventListener('selectstart', handleXRTriggerSelect);
+
+    // --- 15. DOM UI EVENT LISTENERS ---
+    // Shelf buttons in bottom dock
+    document.querySelectorAll('[data-tier]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activateShelfTier(parseInt(btn.dataset.tier));
+      });
+    });
+
+    // Preset buttons in bottom dock
+    document.querySelectorAll('[data-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadEnvironmentPreset(btn.dataset.preset);
+      });
+    });
+
+    // Reader UI buttons
+    document.getElementById('btn-prev-page').addEventListener('click', () => flipPage(false));
+    document.getElementById('btn-next-page').addEventListener('click', () => flipPage(true));
+    document.getElementById('btn-close-reader').addEventListener('click', closeReader);
+    document.getElementById('btn-gutenberg-link').addEventListener('click', () => {
+      if (activeBook) {
+        window.open(`https://www.gutenberg.org/ebooks/${activeBook.gutenbergId}`, '_blank');
+      }
+    });
+
+    // Collapsible Dock Toggle
+    const dockWrapper = document.getElementById('dock-wrapper');
+    const dockToggleBtn = document.getElementById('dock-toggle-btn');
+    dockToggleBtn.addEventListener('click', () => {
+      dockWrapper.classList.toggle('collapsed');
+      const isCollapsed = dockWrapper.classList.contains('collapsed');
+      dockToggleBtn.innerHTML = isCollapsed ? '<span>▴ Show Controls</span>' : '<span>▾ Hide Controls</span>';
+    });
+
+    // Camera Mode Toggle (Orbit vs FPS Walk)
+    const btnOrbit = document.getElementById('btn-orbit-mode');
+    const btnFps = document.getElementById('btn-fps-mode');
+    const crosshair = document.getElementById('crosshair');
+
+    btnOrbit.addEventListener('click', () => {
+      isFpsMode = false;
+      pointerLockControls.unlock();
+      orbitControls.enabled = true;
+      btnOrbit.classList.add('active');
+      btnFps.classList.remove('active');
+      crosshair.classList.remove('active');
+    });
+
+    btnFps.addEventListener('click', () => {
+      isFpsMode = true;
+      orbitControls.enabled = false;
+      pointerLockControls.lock();
+      btnFps.classList.add('active');
+      btnOrbit.classList.remove('active');
+      crosshair.classList.add('active');
+    });
+
+    pointerLockControls.addEventListener('unlock', () => {
+      if (isFpsMode) {
+        isFpsMode = false;
+        orbitControls.enabled = true;
+        btnOrbit.classList.add('active');
+        btnFps.classList.remove('active');
+        crosshair.classList.remove('active');
+      }
+    });
+
+    // Audio Toggle
+    const btnAudio = document.getElementById('btn-audio-toggle');
+    btnAudio.addEventListener('click', () => {
+      soundFX.enabled = !soundFX.enabled;
+      btnAudio.textContent = soundFX.enabled ? '🔊 Sound: On' : '🔇 Sound: Off';
+    });
+
+    // Resize Handler
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- 16. ANIMATION & RENDER LOOP (WebXR Compatible) ---
+    const clock = new THREE.Clock();
+
+    function renderLoop(timestamp, frame) {
+      const delta = clock.getDelta();
+
+      // Gentle floating motion for dust motes
+      const positions = dustMotes.geometry.attributes.position.array;
+      for (let i = 1; i < positions.length; i += 3) {
+        positions[i] -= delta * 0.04;
+        if (positions[i] < 0.2) positions[i] = 3.8;
+      }
+      dustMotes.geometry.attributes.position.needsUpdate = true;
+
+      // FPS Walk Mode WASD Movement
+      if (isFpsMode && pointerLockControls.isLocked) {
+        moveDirection.z = Number(keys.KeyW) - Number(keys.KeyS);
+        moveDirection.x = Number(keys.KeyD) - Number(keys.KeyA);
+        moveDirection.normalize();
+
+        const walkSpeed = 2.4;
+        if (keys.KeyW || keys.KeyS) moveVelocity.z -= moveDirection.z * walkSpeed * delta;
+        if (keys.KeyA || keys.KeyD) moveVelocity.x -= moveDirection.x * walkSpeed * delta;
+
+        // Friction damping
+        moveVelocity.z *= 0.88;
+        moveVelocity.x *= 0.88;
+
+        pointerLockControls.moveForward(-moveVelocity.z);
+        pointerLockControls.moveRight(-moveVelocity.x);
+        camera.position.y = 1.6; // Keep steady eye height
+      } else if (!renderer.xr.isPresenting) {
+        orbitControls.update();
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    // Start WebXR-ready render loop
+    renderer.setAnimationLoop(renderLoop);
+
+    // Initial shelf activation (reveal Victorian classics on start)
+    setTimeout(() => {
+      activateShelfTier(0, false);
+    }, 500);
+
+    console.log("🏛️ Alexandria VR 3D Library successfully initialized with WebXR, Three.js, and GSAP.");
+  </script>
+</body>
+</html>
