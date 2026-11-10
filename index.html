@@ -423,17 +423,6 @@
 
         <div class="dock-separator"></div>
 
-        <!-- Atmosphere Preset Selector -->
-        <div class="dock-group">
-          <span class="dock-label">Atmosphere:</span>
-          <button class="dock-btn active" data-preset="victorian_grand">Victorian</button>
-          <button class="dock-btn" data-preset="cozy_oxford">Oxford</button>
-          <button class="dock-btn" data-preset="cyberpunk_vault">Cyber Data</button>
-          <button class="dock-btn" data-preset="monastery">Scriptorium</button>
-        </div>
-
-        <div class="dock-separator"></div>
-
         <!-- Camera / Control Mode -->
         <div class="dock-group">
           <span class="dock-label">Controls:</span>
@@ -1120,64 +1109,8 @@
 
     const soundFX = new LibraryAudioSynthesizer();
 
-    // --- 4. ENVIRONMENT PRESET SYSTEM & EXTENSIBILITY HOOKS ---
-    const ENVIRONMENT_PRESETS = {
-      victorian_grand: {
-        name: "Grand Victorian Archive",
-        ambientColor: 0x3d2b1f,
-        ambientIntensity: 0.35,
-        lampColor: 0xffb049,
-        spotlightIntensity: 1.8,
-        fogColor: 0x1a120c,
-        fogDensity: 0.035
-      },
-      cozy_oxford: {
-        name: "Cozy Oxford Study",
-        ambientColor: 0x2e1f14,
-        ambientIntensity: 0.4,
-        lampColor: 0xffaa33,
-        spotlightIntensity: 1.4,
-        fogColor: 0x140c06,
-        fogDensity: 0.03
-      },
-      cyberpunk_vault: {
-        name: "Neon Data Vault",
-        ambientColor: 0x0a1a2f,
-        ambientIntensity: 0.25,
-        lampColor: 0x00e5ff,
-        spotlightIntensity: 2.2,
-        fogColor: 0x050b14,
-        fogDensity: 0.04
-      },
-      monastery: {
-        name: "Monastery Scriptorium",
-        ambientColor: 0x2b2416,
-        ambientIntensity: 0.3,
-        lampColor: 0xff7722,
-        spotlightIntensity: 1.5,
-        fogColor: 0x18140c,
-        fogDensity: 0.04
-      }
-    };
-
-    /**
-     * Modular Architectural Hook: Load Environment Preset
-     * Easily modifies lighting rigs, colors, and atmosphere.
-     */
-    function loadEnvironmentPreset(presetKey) {
-      const preset = ENVIRONMENT_PRESETS[presetKey];
-      if (!preset) return;
-
-      gsap.to(ambientLight.color, { r: ((preset.ambientColor >> 16) & 255) / 255, g: ((preset.ambientColor >> 8) & 255) / 255, b: (preset.ambientColor & 255) / 255, duration: 1 });
-      gsap.to(ambientLight, { intensity: preset.ambientIntensity, duration: 1 });
-      gsap.to(readingSpotlight, { intensity: preset.spotlightIntensity, duration: 1 });
-      gsap.to(deskLampLight.color, { r: ((preset.lampColor >> 16) & 255) / 255, g: ((preset.lampColor >> 8) & 255) / 255, b: (preset.lampColor & 255) / 255, duration: 1 });
-
-      if (scene.fog) {
-        gsap.to(scene.fog.color, { r: ((preset.fogColor >> 16) & 255) / 255, g: ((preset.fogColor >> 8) & 255) / 255, b: (preset.fogColor & 255) / 255, duration: 1 });
-        scene.fog.density = preset.fogDensity;
-      }
-    }
+    // --- 4. EXTENSIBILITY HOOKS ---
+    // (Atmosphere presets removed in iteration 2: one finished room replaces them.)
 
     /**
      * Modular Architectural Hook: Load Custom Scanned Environment (GLTF/GLB)
@@ -1484,17 +1417,33 @@
 
       // Gold brass tier label plaque
       const plaqueCanvas = document.createElement('canvas');
-      plaqueCanvas.width = 256;
-      plaqueCanvas.height = 64;
+      // Canvas aspect (512x110 = 4.65) matches the 0.65 x 0.14 plane so text is not stretched.
+      plaqueCanvas.width = 512;
+      plaqueCanvas.height = 110;
       const pctx = plaqueCanvas.getContext('2d');
-      pctx.fillStyle = '#b8860b';
-      pctx.fillRect(0, 0, 256, 64);
-      pctx.fillStyle = '#1a0f08';
-      pctx.font = 'bold 20px "Cinzel", Georgia, serif';
-      pctx.textAlign = 'center';
       const tierNames = ["I. VICTORIAN NOVELS", "II. GOTHIC & SPECULATIVE", "III. WORLD CLASSICS"];
-      pctx.fillText(tierNames[tierIndex], 128, 40);
+      // Draw the label, shrinking the font until the text fits with a margin.
+      // Redrawn once web fonts load, since measureText depends on the real font.
+      const drawPlaque = () => {
+        const maxTextWidth = plaqueCanvas.width * 0.88;
+        pctx.fillStyle = '#b8860b';
+        pctx.fillRect(0, 0, plaqueCanvas.width, plaqueCanvas.height);
+        pctx.fillStyle = '#1a0f08';
+        pctx.textAlign = 'center';
+        pctx.textBaseline = 'middle';
+        let fontSize = 56;
+        pctx.font = `bold ${fontSize}px "Cinzel", Georgia, serif`;
+        while (pctx.measureText(tierNames[tierIndex]).width > maxTextWidth && fontSize > 12) {
+          fontSize -= 2;
+          pctx.font = `bold ${fontSize}px "Cinzel", Georgia, serif`;
+        }
+        pctx.fillText(tierNames[tierIndex], plaqueCanvas.width / 2, plaqueCanvas.height / 2);
+      };
+      drawPlaque();
       const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => { drawPlaque(); plaqueTex.needsUpdate = true; });
+      }
       const plaqueMat = new THREE.MeshBasicMaterial({ map: plaqueTex });
       const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.65, 0.14), plaqueMat);
       plaque.position.set(0, tierY - 0.04, SHELF_DEPTH / 2 + 0.01);
@@ -2127,15 +2076,6 @@
     document.querySelectorAll('[data-tier]').forEach(btn => {
       btn.addEventListener('click', () => {
         activateShelfTier(parseInt(btn.dataset.tier));
-      });
-    });
-
-    // Preset buttons in bottom dock
-    document.querySelectorAll('[data-preset]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        loadEnvironmentPreset(btn.dataset.preset);
       });
     });
 
