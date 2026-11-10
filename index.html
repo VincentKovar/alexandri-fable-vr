@@ -1497,9 +1497,41 @@
     const clickableBooks = [];
 
     // Dimensions for hero books
-    const BOOK_W = 0.24;
+    const BOOK_W = 0.28; // ~0.67 aspect against 0.42 height, matching Gutenberg cover art
     const BOOK_H = 0.42;
     const BOOK_D = 0.34;
+
+    // R2: real cover art. gutenberg.org sends no CORS headers, so WebGL cannot use its
+    // images directly; the covers are saved in /covers/<gutenbergId>.jpg (same origin).
+    // The generated leather cover stays in place until the image loads, and permanently
+    // if it is missing or fails to load.
+    const coverLoader = new THREE.TextureLoader();
+    const COVER_FACE_ASPECT = BOOK_W / BOOK_H;
+    function loadRealCover(bookData, material) {
+      coverLoader.load(
+        `covers/${bookData.gutenbergId}.jpg`,
+        (tex) => {
+          // Crop (not stretch) the image to the cover face's proportions
+          const img = tex.image;
+          const imgAspect = img.width / img.height;
+          if (imgAspect > COVER_FACE_ASPECT) {
+            tex.repeat.x = COVER_FACE_ASPECT / imgAspect;
+            tex.offset.x = (1 - tex.repeat.x) / 2;
+          } else {
+            tex.repeat.y = imgAspect / COVER_FACE_ASPECT;
+            tex.offset.y = (1 - tex.repeat.y) / 2;
+          }
+          tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          const generated = material.map;
+          material.map = tex;
+          material.needsUpdate = true;
+          if (generated) generated.dispose();
+          bookData.hasImageCover = true;
+        },
+        undefined,
+        () => console.warn(`[covers] No image cover for "${bookData.title}"; using generated cover.`)
+      );
+    }
 
     GUTENBERG_LIBRARY.forEach((bookData) => {
       const bookGroup = new THREE.Group();
@@ -1522,6 +1554,7 @@
         map: coverTexture,
         roughness: 0.45
       });
+      loadRealCover(bookData, frontCoverMat);
 
       // Material index mapping for BoxGeometry: [right, left, top, bottom, front, back]
       const bookMaterials = [
@@ -1772,8 +1805,9 @@
     // Touch a cover: open the reader. Touch the shelf again, or empty space: the books return.
     let activeShelfTierIndex = null;
     const FAN_RADIUS = 1.0;                         // metres from the viewer to the cover face
-    const FAN_SCALE = 1.15;                         // floating covers are enlarged so titles read
-    const FAN_STEP = THREE.MathUtils.degToRad(18);  // angular spacing between covers
+    const FAN_SCALE = 1.1;                          // floating covers are enlarged so titles read
+    const FAN_MAX_RADIUS = 1.6;                     // furthest the arc may back off on narrow views
+    const FAN_STEP = THREE.MathUtils.degToRad(20);  // fallback angular spacing between covers
     const SHELF_FRONT_Z = bookshelfGroup.position.z + SHELF_DEPTH / 2;
     const fanHelper = new THREE.Object3D();
     const _fanEye = new THREE.Vector3();
@@ -1806,6 +1840,19 @@
       const heading = Math.atan2(_fanDir.x, _fanDir.z);
       const centerY = Math.max(_fanEye.y - 0.1, 1.0);
 
+      // Start at ~1 m and back off only as far as needed for all four covers to sit
+      // within 80% of the horizontal field of view without overlapping.
+      const coverW = BOOK_W * FAN_SCALE;
+      const hFov = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.aspect);
+      let faceR = FAN_RADIUS;
+      let step = FAN_STEP;
+      for (; faceR <= FAN_MAX_RADIUS; faceR += 0.05) {
+        const rc = faceR + (BOOK_D / 2) * FAN_SCALE;
+        step = 2 * Math.asin(Math.min(1, (coverW + 0.04) / (2 * rc)));
+        const span = 3 * step + 2 * Math.atan(coverW / (2 * rc));
+        if (span <= 0.8 * hFov) break;
+      }
+
       const tierGroup = shelfTiers[tierIndex];
       tierGroup.updateWorldMatrix(true, false);
       const parentInvQ = tierGroup.getWorldQuaternion(new THREE.Quaternion()).invert();
@@ -1813,8 +1860,8 @@
 
       getTierBooks(tierIndex).forEach((book, i) => {
         const slot = book.userData.bookData.shelfPosition; // 0 = leftmost
-        const a = heading + (1.5 - slot) * FAN_STEP;
-        const r = FAN_RADIUS + (BOOK_D / 2) * FAN_SCALE; // book origin sits half a book-depth behind the cover
+        const a = heading + (1.5 - slot) * step;
+        const r = faceR + (BOOK_D / 2) * FAN_SCALE; // book origin sits half a book-depth behind the cover
         const world = new THREE.Vector3(
           _fanEye.x + r * Math.sin(a),
           centerY - (BOOK_H / 2) * FAN_SCALE,
