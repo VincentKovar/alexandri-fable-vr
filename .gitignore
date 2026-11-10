@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# AI Studio session artifacts (screenshots etc.)
+.aistudio/

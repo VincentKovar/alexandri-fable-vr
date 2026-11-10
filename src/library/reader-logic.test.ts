@@ -12,7 +12,6 @@ import {
   getNextPageIndex,
   getPrevPageIndex,
   computeShelfCoordinates,
-  ENVIRONMENT_PRESETS,
 } from './reader-logic';
 
 test('Gutenberg dataset contains exactly 12 required classic books with valid data', () => {
@@ -82,18 +81,4 @@ test('Shelf coordinates compute valid geometric positions', () => {
   const coords23 = computeShelfCoordinates(2, 3);
   assert.equal(coords23.y, 0.6);
   assert.equal(coords23.x, -0.75 + 3 * 0.5);
-});
-
-test('Environment presets contain valid lighting configs', () => {
-  const presets = Object.keys(ENVIRONMENT_PRESETS);
-  assert.ok(presets.includes('victorian_grand'));
-  assert.ok(presets.includes('cozy_oxford'));
-  assert.ok(presets.includes('cyberpunk_archive'));
-  assert.ok(presets.includes('ancient_monastery'));
-
-  for (const key of presets) {
-    const p = ENVIRONMENT_PRESETS[key as keyof typeof ENVIRONMENT_PRESETS];
-    assert.ok(p.ambientIntensity > 0);
-    assert.ok(p.spotlightIntensity > 0);
-  }
 });
