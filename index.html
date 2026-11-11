@@ -17,6 +17,8 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
   <script src="books/excerpts.js"></script>
+  <script src="js/library-kit.js"></script>
+  <script src="js/library-room.js"></script>
 
   <style>
     :root {
@@ -657,180 +659,15 @@
       }
     ];
 
+    // Generated canvases hold sRGB colours (see the renderer's colour management below)
+    {
+      const CanvasTex = THREE.CanvasTexture;
+      THREE.CanvasTexture = function (...args) { const t = new CanvasTex(...args); t.encoding = THREE.sRGBEncoding; return t; };
+      THREE.CanvasTexture.prototype = CanvasTex.prototype;
+    }
+
     // --- 2. PROCEDURAL TEXTURE GENERATION (100% Zero-404 Asset Delivery) ---
     const TextureGenerator = {
-      // Wood plank floor texture with varnish specular sheen
-      generateWoodFloor() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 1024;
-        canvas.height = 1024;
-        const ctx = canvas.getContext('2d');
-
-        // Dark rich mahogany / teak base
-        ctx.fillStyle = '#4a2c18';
-        ctx.fillRect(0, 0, 1024, 1024);
-
-        const plankHeight = 128;
-        const numPlanks = 8;
-
-        for (let i = 0; i < numPlanks; i++) {
-          const y = i * plankHeight;
-          const hueVar = (Math.random() - 0.5) * 10;
-          ctx.fillStyle = `rgb(${104 + hueVar}, ${64 + hueVar * 0.6}, ${36 + hueVar * 0.3})`;
-          ctx.fillRect(0, y, 1024, plankHeight);
-
-          // Wood grain fine lines
-          ctx.strokeStyle = 'rgba(40, 20, 8, 0.35)';
-          ctx.lineWidth = 1;
-          for (let g = 0; g < 40; g++) {
-            ctx.beginPath();
-            const startY = y + Math.random() * plankHeight;
-            ctx.moveTo(0, startY);
-            ctx.bezierCurveTo(
-              300, startY + (Math.random() - 0.5) * 12,
-              700, startY + (Math.random() - 0.5) * 12,
-              1024, startY + (Math.random() - 0.5) * 10
-            );
-            ctx.stroke();
-          }
-
-          // Plank border shadows (joints)
-          ctx.fillStyle = 'rgba(20, 10, 4, 0.7)';
-          ctx.fillRect(0, y + plankHeight - 3, 1024, 3);
-          ctx.fillStyle = 'rgba(212, 175, 55, 0.1)';
-          ctx.fillRect(0, y, 1024, 2);
-        }
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(4, 4);
-        return texture;
-      },
-
-      // Fluted dark mahogany wood texture for shelves & architectural trim
-      generateMahoganyWood() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-
-        ctx.fillStyle = '#3a1e12';
-        ctx.fillRect(0, 0, 512, 512);
-
-        // Vertical grain fibers
-        for (let x = 0; x < 512; x += 4) {
-          const tone = 30 + Math.sin(x * 0.1) * 15 + Math.random() * 10;
-          ctx.fillStyle = `rgba(${tone + 25}, ${tone * 0.6 + 10}, ${tone * 0.3 + 5}, 0.6)`;
-          ctx.fillRect(x, 0, 3, 512);
-        }
-
-        // Gold leaf trim accents
-        ctx.fillStyle = 'rgba(212, 175, 55, 0.2)';
-        ctx.fillRect(0, 0, 512, 8);
-        ctx.fillRect(0, 504, 512, 8);
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        return texture;
-      },
-
-      // Victorian damask library wallpaper
-      generateWallpaper() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-
-        // Warm sage wall with soft gold damask
-        ctx.fillStyle = '#6f7a5c';
-        ctx.fillRect(0, 0, 512, 512);
-
-        // Damask fleur-de-lis floral pattern
-        ctx.strokeStyle = 'rgba(238, 214, 150, 0.35)';
-        ctx.lineWidth = 2;
-        for (let x = 64; x < 512; x += 128) {
-          for (let y = 64; y < 512; y += 128) {
-            ctx.beginPath();
-            ctx.arc(x, y, 22, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.arc(x, y - 10, 12, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(x - 26, y);
-            ctx.lineTo(x + 26, y);
-            ctx.moveTo(x, y - 26);
-            ctx.lineTo(x, y + 26);
-            ctx.stroke();
-          }
-        }
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(1, 1); // per-wall repeat is set where the walls are built
-        return texture;
-      },
-
-      // Rug, dusk window view and framed paintings (R3)
-      generateRug() {
-        const c = document.createElement('canvas');
-        c.width = 512; c.height = 384;
-        const x = c.getContext('2d');
-        x.fillStyle = '#7b2d2a'; x.fillRect(0, 0, 512, 384);
-        x.strokeStyle = '#d9b36a'; x.lineWidth = 6; x.strokeRect(14, 14, 484, 356);
-        x.strokeStyle = '#2f4a45'; x.lineWidth = 18; x.strokeRect(34, 34, 444, 316);
-        x.strokeStyle = '#d9b36a'; x.lineWidth = 3; x.strokeRect(54, 54, 404, 276);
-        x.fillStyle = '#9a3f35';
-        for (let i = 0; i < 5; i++) {
-          const cx = 96 + i * 80;
-          x.beginPath(); x.moveTo(cx, 192); x.lineTo(cx + 36, 130); x.lineTo(cx + 72, 192); x.lineTo(cx + 36, 254); x.closePath(); x.fill();
-          x.strokeStyle = '#d9b36a'; x.lineWidth = 2; x.stroke();
-        }
-        const t = new THREE.CanvasTexture(c);
-        return t;
-      },
-
-      generateDuskWindow() {
-        const c = document.createElement('canvas');
-        c.width = 256; c.height = 384;
-        const x = c.getContext('2d');
-        const g = x.createLinearGradient(0, 0, 0, 384);
-        g.addColorStop(0, '#1d2b52'); g.addColorStop(0.55, '#6b6a9a'); g.addColorStop(0.8, '#f0a566'); g.addColorStop(1, '#ffd49a');
-        x.fillStyle = g; x.fillRect(0, 0, 256, 384);
-        x.fillStyle = 'rgba(255,255,230,0.9)';
-        for (let i = 0; i < 26; i++) x.fillRect(Math.random() * 256, Math.random() * 170, 2, 2);
-        x.fillStyle = '#2a2638';
-        x.beginPath(); x.moveTo(0, 330);
-        for (let px = 0; px <= 256; px += 16) x.lineTo(px, 318 + Math.sin(px * 0.09) * 10 + Math.random() * 8);
-        x.lineTo(256, 384); x.lineTo(0, 384); x.closePath(); x.fill();
-        return new THREE.CanvasTexture(c);
-      },
-
-      generatePainting(sky1, sky2, hill1, hill2) {
-        const c = document.createElement('canvas');
-        c.width = 256; c.height = 320;
-        const x = c.getContext('2d');
-        const g = x.createLinearGradient(0, 0, 0, 320);
-        g.addColorStop(0, sky1); g.addColorStop(1, sky2);
-        x.fillStyle = g; x.fillRect(0, 0, 256, 320);
-        x.fillStyle = 'rgba(255,240,200,0.85)';
-        x.beginPath(); x.arc(170, 100, 26, 0, Math.PI * 2); x.fill();
-        x.fillStyle = hill1;
-        x.beginPath(); x.moveTo(0, 210);
-        for (let px = 0; px <= 256; px += 16) x.lineTo(px, 200 + Math.sin(px * 0.03) * 24);
-        x.lineTo(256, 320); x.lineTo(0, 320); x.closePath(); x.fill();
-        x.fillStyle = hill2;
-        x.beginPath(); x.moveTo(0, 260);
-        for (let px = 0; px <= 256; px += 16) x.lineTo(px, 252 + Math.cos(px * 0.045) * 18);
-        x.lineTo(256, 320); x.lineTo(0, 320); x.closePath(); x.fill();
-        return new THREE.CanvasTexture(c);
-      },
-
       // Leather book cover with gold foil stamping
       generateBookCover(book) {
         const canvas = document.createElement('canvas');
@@ -1186,7 +1023,7 @@
     // --- 5. SCENE INITIALIZATION & LIGHTING RIG ---
     const canvas = document.getElementById('webgl-canvas');
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x3a2a1e, 0.012);
+    scene.fog = new THREE.FogExp2(new THREE.Color(0x2a1c12).convertSRGBToLinear().getHex(), 0.006);
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.set(0, 1.6, 2.6); // Default eye level in front of bookcase
@@ -1208,6 +1045,10 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.xr.enabled = true;
+    // Colour-managed, filmic output: textures and colours are sRGB, lighting is computed in linear
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
 
     // --- ROBUST WEBXR VRBUTTON IMPLEMENTATION (Works across all browsers & CDNs) ---
     const VRButton = {
@@ -1268,438 +1109,60 @@
     // Attach WebXR VRButton
     document.body.appendChild(THREE.VRButton.createButton(renderer));
 
-    // --- LIGHTING RIG (R3: five lights, one shadow caster, for Quest 2) ---
-    // Base and "reading" intensities live here so open/close of the reader restores them exactly.
-    const LIGHT_BASE = { ambient: 0.72, key: 1.5, reading: 1.2 };
-    const LIGHT_READING = { ambient: 0.25, key: 0.5, reading: 2.2 };
+    // --- 5b to 8. ROOM, LIGHTING, BOOKCASES AND DECORATIVE BOOKS ---
+    // Built by js/library-room.js (geometry merged per material, one shadow-casting light).
+    // This file keeps only what the interaction needs: the shelf touch zones and tier groups.
+    const SHELF_WIDTH = 4.2;
+    const SHELF_DEPTH = 0.55;
+    const TIER_HEIGHTS = [2.2, 1.4, 0.6]; // Tier 0 (Top), Tier 1 (Mid), Tier 2 (Bottom)
+    const HERO_X = [-1.1, -0.37, 0.37, 1.1];
+    const QUALITY = /OculusBrowser|Quest|Pico/i.test(navigator.userAgent) ? 'vr' : 'high';
+    if (QUALITY === 'vr') renderer.setPixelRatio(1);
+    scene.background = new THREE.Color(0x0a0705);
 
-    // Warm ambient fill (keeps every direction of the room readable)
-    const ambientLight = new THREE.AmbientLight(0xd4ad84, LIGHT_BASE.ambient);
-    scene.add(ambientLight);
-
-    // Key ceiling light: the ONLY shadow-casting light
-    const keySpotlight = new THREE.SpotLight(0xffe2b8, LIGHT_BASE.key, 25, Math.PI / 3.2, 0.5, 1.2);
-    keySpotlight.position.set(0, 3.1, 2.8);
-    keySpotlight.target.position.set(0, 1.4, -1.8);
-    keySpotlight.castShadow = true;
-    keySpotlight.shadow.mapSize.width = 1024;
-    keySpotlight.shadow.mapSize.height = 1024;
-    keySpotlight.shadow.bias = -0.0005;
-    scene.add(keySpotlight);
-    scene.add(keySpotlight.target);
-
-    // Soft reading spotlight (brightens during reading)
-    const readingSpotlight = new THREE.SpotLight(0xfff1d6, LIGHT_BASE.reading, 12, Math.PI / 4, 0.5, 1.0);
-    readingSpotlight.position.set(0, 3.1, 1.2);
-    readingSpotlight.target.position.set(0, 1.4, -0.6);
-    scene.add(readingSpotlight);
-    scene.add(readingSpotlight.target);
-
-    // Reading lamp beside the armchair (no shadows)
-    const deskLampLight = new THREE.PointLight(0xffb049, 1.1, 7, 2);
-    deskLampLight.position.set(-2.95, 1.05, 3.25);
-    scene.add(deskLampLight);
-
-    // Fireplace light (flickers in the render loop, no shadows)
-    const fireLight = new THREE.PointLight(0xff7a2a, 1.5, 8, 2);
-    fireLight.position.set(-3.5, 0.55, 1.0);
-    scene.add(fireLight);
-
-    // --- 6. PROCEDURAL ROOM ARCHITECTURE (R3: one cozy room) ---
-    // Room spans x -4..4, z -3.2..4.6, ceiling 3.4 m. Every direction has a lit wall.
-    const ROOM = { xMin: -4, xMax: 4, zMin: -3.2, zMax: 4.6, h: 3.4 };
-    scene.background = new THREE.Color(0x3a2a1e);
-
-    const roomGroup = new THREE.Group();
-    scene.add(roomGroup);
-
-    const roomW = ROOM.xMax - ROOM.xMin;
-    const roomD = ROOM.zMax - ROOM.zMin;
-    const roomCZ = (ROOM.zMax + ROOM.zMin) / 2;
-
-    // Small helpers
-    const addMesh = (geo, mat, x, y, z, parent = roomGroup) => {
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(x, y, z);
-      parent.add(m);
-      return m;
-    };
-    const addBox = (w, h, d, mat, x, y, z, parent = roomGroup) => addMesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, parent);
-
-    // Shared materials
-    const woodDarkMat = new THREE.MeshStandardMaterial({ color: 0x4a2a17, roughness: 0.55 });
-    const woodMidMat = new THREE.MeshStandardMaterial({ color: 0x5e3a22, roughness: 0.6 });
-    const creamMat = new THREE.MeshStandardMaterial({ color: 0xe6d9bd, roughness: 0.8 });
-    const stoneMat = new THREE.MeshStandardMaterial({ color: 0xd8ccb2, roughness: 0.9 });
-    const brassMat = new THREE.MeshStandardMaterial({ color: 0xd9b24a, roughness: 0.4, metalness: 0.15, emissive: 0x3a2a08 }); // low metalness: no env map, so true metal would render black
-    const giltMat = new THREE.MeshStandardMaterial({ color: 0xb88a2e, roughness: 0.4, metalness: 0.5 });
-
-    // Floor (lightened parquet)
-    const floorMat = new THREE.MeshStandardMaterial({
-      map: TextureGenerator.generateWoodFloor(),
-      roughness: 0.4,
-      metalness: 0.05
+    const LIBRARY = AlexandriaRoom.build({
+      scene, renderer, quality: QUALITY,
+      shelf: { width: SHELF_WIDTH, depth: SHELF_DEPTH, tiers: TIER_HEIGHTS, z: -1.8, heroX: HERO_X }
     });
-    floorMat.map.repeat.set(roomW / 4, roomD / 4);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), floorMat);
-    floor.position.set(0, 0, roomCZ);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    roomGroup.add(floor);
+    LIBRARY.group.userData.colorManaged = true;
+    const ROOM = LIBRARY.ROOM;
+    const { ambientLight, keySpotlight, readingSpotlight } = LIBRARY.lights;
+    // Base and "reading" intensities, so opening and closing the reader restores them exactly
+    const LIGHT_BASE = LIBRARY.LIGHT_BASE;
+    const LIGHT_READING = LIBRARY.LIGHT_READING;
+    function animateRoom(t) { LIBRARY.animate(t); }
 
-    // Ceiling: warm cream with dark timber beams
-    const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xe2d2ae, roughness: 0.9 });
-    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), ceilingMat);
-    ceiling.position.set(0, ROOM.h, roomCZ);
-    ceiling.rotation.x = Math.PI / 2;
-    roomGroup.add(ceiling);
-    [-1.0, 1.4, 3.8].forEach(bz => addBox(roomW, 0.2, 0.26, woodDarkMat, 0, ROOM.h - 0.1, bz));
-
-    // Walls: wallpaper + wainscot + moulding. Each wall is a group whose local +z faces into the room.
-    const WALL_TILE = 1.6; // metres per wallpaper repeat
-    const baseWallpaper = TextureGenerator.generateWallpaper();
-    function makeWall(width, px, pz, rotY) {
-      const g = new THREE.Group();
-      g.position.set(px, 0, pz);
-      g.rotation.y = rotY;
-      const tex = baseWallpaper.clone();
-      tex.needsUpdate = true;
-      tex.repeat.set(width / WALL_TILE, ROOM.h / WALL_TILE);
-      const plane = new THREE.Mesh(
-        new THREE.PlaneGeometry(width, ROOM.h),
-        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 })
-      );
-      plane.position.y = ROOM.h / 2;
-      plane.receiveShadow = true;
-      g.add(plane);
-      addBox(width, 1.0, 0.04, woodMidMat, 0, 0.5, 0.02, g);        // wainscot
-      addBox(width, 0.06, 0.08, woodDarkMat, 0, 1.03, 0.04, g);     // chair rail
-      addBox(width, 0.16, 0.06, woodDarkMat, 0, 0.08, 0.04, g);     // baseboard
-      addBox(width, 0.14, 0.1, creamMat, 0, ROOM.h - 0.07, 0.05, g); // crown moulding
-      roomGroup.add(g);
-      return g;
-    }
-    const backWall  = makeWall(roomW, 0, ROOM.zMin, 0);
-    const frontWall = makeWall(roomW, 0, ROOM.zMax, Math.PI);
-    const leftWall  = makeWall(roomD, ROOM.xMin, roomCZ, Math.PI / 2);
-    const rightWall = makeWall(roomD, ROOM.xMax, roomCZ, -Math.PI / 2);
-
-    // Framed paintings (style: warm landscapes)
-    const paintings = [
-      ['#f0b27a', '#a85a3a', '#3f4a3a', '#2b3328'],
-      ['#7fa0c0', '#e7c79a', '#4a5a40', '#2a3a2f'],
-      ['#d98a5a', '#5a4a6a', '#35402f', '#1f2a22'],
-      ['#9ab6b0', '#f0d6a0', '#556848', '#30402f']
-    ];
-    let paintingIdx = 0;
-    function addPicture(wall, w, h, lx, ly) {
-      const pal = paintings[paintingIdx++ % paintings.length];
-      const art = TextureGenerator.generatePainting(...pal);
-      const grp = new THREE.Group();
-      addBox(w + 0.14, h + 0.14, 0.05, giltMat, 0, 0, 0, grp);
-      addMesh(
-        new THREE.PlaneGeometry(w, h),
-        new THREE.MeshStandardMaterial({ map: art, emissive: 0x666666, emissiveMap: art, roughness: 0.8 }),
-        0, 0, 0.03, grp
-      );
-      grp.position.set(lx, ly, 0.06);
-      wall.add(grp);
-    }
-    addPicture(backWall, 0.8, 1.0, -3.2, 1.9);
-    addPicture(backWall, 0.8, 1.0, 3.2, 1.9);
-    addPicture(frontWall, 1.1, 0.85, 0.8, 1.9);
-    addPicture(frontWall, 0.6, 0.8, 2.4, 1.9);
-    addPicture(leftWall, 0.7, 0.9, 2.9, 1.9);    // left wall local x = 0.7 - worldZ
-    addPicture(leftWall, 0.7, 0.9, -2.6, 1.9);
-    addPicture(rightWall, 0.7, 0.9, -2.9, 1.9);  // right wall local x = worldZ - 0.7
-    addPicture(rightWall, 0.7, 0.9, 2.6, 1.9);
-
-    // Door on the front wall (world x = 2.0 -> local x = -2.0)
-    const doorMat = new THREE.MeshStandardMaterial({ color: 0x3f6a58, roughness: 0.6 });
-    const doorInsetMat = new THREE.MeshStandardMaterial({ color: 0x2f5444, roughness: 0.6 });
-    addBox(1.2, 2.2, 0.06, creamMat, -2.0, 1.1, 0.04, frontWall);          // door casing
-    addBox(1.0, 2.1, 0.07, doorMat, -2.0, 1.05, 0.05, frontWall);
-    addBox(0.7, 0.8, 0.03, doorInsetMat, -2.0, 1.55, 0.1, frontWall);
-    addBox(0.7, 0.8, 0.03, doorInsetMat, -2.0, 0.6, 0.1, frontWall);
-    addMesh(new THREE.SphereGeometry(0.045, 12, 8), brassMat, -1.65, 1.0, 0.13, frontWall);
-
-    // --- Fireplace on the left wall (world z = 1.0 -> local x = -0.3) ---
-    const fireplace = new THREE.Group();
-    fireplace.position.set(-0.3, 0, 0);
-    leftWall.add(fireplace);
-    const hearthStoneMat = new THREE.MeshStandardMaterial({ color: 0x8d8478, roughness: 0.95 });
-    addBox(2.5, ROOM.h - 1.2, 0.34, stoneMat, 0, 1.2 + (ROOM.h - 1.2) / 2, 0.17, fireplace); // chimney breast
-    addBox(0.26, 1.15, 0.42, stoneMat, -0.72, 0.575, 0.21, fireplace);                          // left pillar
-    addBox(0.26, 1.15, 0.42, stoneMat, 0.72, 0.575, 0.21, fireplace);                           // right pillar
-    addBox(1.9, 0.2, 0.42, stoneMat, 0, 1.05, 0.21, fireplace);                                 // lintel
-    addBox(2.3, 0.07, 0.55, woodDarkMat, 0, 1.2, 0.27, fireplace);                              // mantel shelf
-    addBox(2.4, 0.07, 0.8, hearthStoneMat, 0, 0.035, 0.4, fireplace);                           // hearth slab
-    addBox(1.18, 0.95, 0.03, new THREE.MeshBasicMaterial({ color: 0x120a07 }), 0, 0.5, 0.03, fireplace); // firebox back
-    // Logs and embers
-    const logMat = new THREE.MeshStandardMaterial({ color: 0x3a2314, roughness: 0.9 });
-    [-0.1, 0.12].forEach((lz, i) => {
-      const log = addMesh(new THREE.CylinderGeometry(0.07, 0.07, 0.7, 8), logMat, 0, 0.12 + i * 0.07, 0.12 + lz * 0.3, fireplace);
-      log.rotation.z = Math.PI / 2;
-      log.rotation.y = i ? 0.25 : -0.2;
-    });
-    const emberGlow = addMesh(
-      new THREE.PlaneGeometry(1.0, 0.7),
-      new THREE.MeshBasicMaterial({ color: 0xff6a1a, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
-      0, 0.4, 0.2, fireplace
-    );
-    // Flames (animated in the render loop)
-    const flameDefs = [
-      { x: -0.22, h: 0.42, c: 0xff6a1a }, { x: 0.0, h: 0.55, c: 0xff8a22 }, { x: 0.22, h: 0.4, c: 0xff6a1a },
-      { x: -0.08, h: 0.3, c: 0xffd060 }, { x: 0.1, h: 0.32, c: 0xffd060 }
-    ];
-    const flames = flameDefs.map((d, i) => {
-      const geo = new THREE.ConeGeometry(0.1, d.h, 8);
-      geo.translate(0, d.h / 2, 0);
-      const f = addMesh(
-        geo,
-        new THREE.MeshBasicMaterial({ color: d.c, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
-        d.x, 0.17, 0.16, fireplace
-      );
-      f.userData = { phase: i * 1.7, baseH: 1 };
-      return f;
-    });
-    // Mantel decor: painting, clock, candlesticks
-    (function () {
-      const art = TextureGenerator.generatePainting('#e8b07a', '#8a4a3a', '#3a4a38', '#222d24');
-      addBox(1.1, 1.0, 0.05, giltMat, 0, 2.1, 0.365, fireplace);
-      addMesh(new THREE.PlaneGeometry(0.96, 0.86), new THREE.MeshStandardMaterial({ map: art, emissive: 0x666666, emissiveMap: art }), 0, 2.1, 0.395, fireplace);
-      addBox(0.28, 0.22, 0.12, woodDarkMat, 0, 1.34, 0.3, fireplace);
-      addMesh(new THREE.CircleGeometry(0.08, 20), new THREE.MeshStandardMaterial({ color: 0xf3ead2 }), 0, 1.34, 0.361, fireplace);
-      [-0.7, 0.7].forEach(cx => {
-        addMesh(new THREE.CylinderGeometry(0.03, 0.045, 0.2, 10), brassMat, cx, 1.34, 0.3, fireplace);
-        addMesh(new THREE.SphereGeometry(0.022, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd27a, fog: false }), cx, 1.47, 0.3, fireplace);
-      });
-    })();
-
-    // --- Lit dusk window on the right wall (world z = 0.5 -> local x = -0.2) ---
-    const windowGroup = new THREE.Group();
-    windowGroup.position.set(-0.2, 0, 0);
-    rightWall.add(windowGroup);
-    addMesh(
-      new THREE.PlaneGeometry(1.3, 1.9),
-      new THREE.MeshBasicMaterial({ map: TextureGenerator.generateDuskWindow(), fog: false }),
-      0, 1.85, 0.02, windowGroup
-    );
-    const frameMat = creamMat;
-    addBox(1.5, 0.1, 0.1, frameMat, 0, 2.85, 0.06, windowGroup);
-    addBox(1.5, 0.1, 0.1, frameMat, 0, 0.85, 0.06, windowGroup);
-    addBox(0.1, 2.1, 0.1, frameMat, -0.7, 1.85, 0.06, windowGroup);
-    addBox(0.1, 2.1, 0.1, frameMat, 0.7, 1.85, 0.06, windowGroup);
-    addBox(0.04, 1.9, 0.05, frameMat, 0, 1.85, 0.05, windowGroup);    // mullions
-    addBox(1.3, 0.04, 0.05, frameMat, 0, 1.85, 0.05, windowGroup);
-    addBox(1.8, 0.05, 0.26, frameMat, 0, 0.78, 0.13, windowGroup);    // sill
-    const curtainMat = new THREE.MeshStandardMaterial({ color: 0x8a2f2a, roughness: 0.95 });
-    addBox(0.5, 2.45, 0.14, curtainMat, -0.98, 1.75, 0.1, windowGroup);
-    addBox(0.5, 2.45, 0.14, curtainMat, 0.98, 1.75, 0.1, windowGroup);
-    const rod = addMesh(new THREE.CylinderGeometry(0.02, 0.02, 2.7, 8), brassMat, 0, 3.0, 0.12, windowGroup);
-    rod.rotation.z = Math.PI / 2;
-    // Window seat
-    addBox(1.5, 0.42, 0.5, woodMidMat, 0, 0.21, 0.3, windowGroup);
-    addBox(1.4, 0.1, 0.46, new THREE.MeshStandardMaterial({ color: 0x3f6b5a, roughness: 0.95 }), 0, 0.47, 0.3, windowGroup);
-    addBox(0.34, 0.3, 0.12, new THREE.MeshStandardMaterial({ color: 0xd9a54a, roughness: 0.95 }), -0.45, 0.67, 0.12, windowGroup);
-    addBox(0.34, 0.3, 0.12, new THREE.MeshStandardMaterial({ color: 0x8a2f2a, roughness: 0.95 }), 0.4, 0.67, 0.12, windowGroup);
-
-    // --- Rug in front of the fireplace ---
-    const rug = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.4, 2.55),
-      new THREE.MeshStandardMaterial({ map: TextureGenerator.generateRug(), roughness: 1 })
-    );
-    rug.rotation.x = -Math.PI / 2;
-    rug.rotation.z = Math.PI / 2; // long side along the room's depth (z)
-    rug.position.set(-2.6, 0.012, 1.7);
-    rug.receiveShadow = true;
-    roomGroup.add(rug);
-
-    // --- Armchair facing the fire (leather) ---
-    const chairGroup = new THREE.Group();
-    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x8a3a2c, roughness: 0.55 });
-    const cushionMat = new THREE.MeshStandardMaterial({ color: 0xa6503c, roughness: 0.7 });
-    addBox(0.92, 0.22, 0.9, leatherMat, 0, 0.3, 0, chairGroup);                       // base
-    addBox(0.68, 0.16, 0.68, cushionMat, 0, 0.49, 0.06, chairGroup);                  // seat cushion
-    const chairBack = addBox(0.92, 0.82, 0.22, leatherMat, 0, 0.82, -0.36, chairGroup);
-    chairBack.rotation.x = -0.14;
-    const backCushion = addBox(0.6, 0.5, 0.14, cushionMat, 0, 0.75, -0.2, chairGroup);
-    backCushion.rotation.x = -0.14;
-    [-0.5, 0.5].forEach(ax => {
-      addBox(0.2, 0.46, 0.86, leatherMat, ax, 0.5, 0, chairGroup);                    // arm body
-      const roll = addMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.86, 12), leatherMat, ax, 0.76, 0, chairGroup);
-      roll.rotation.x = Math.PI / 2;
-    });
-    [[-0.38, -0.36], [0.38, -0.36], [-0.38, 0.36], [0.38, 0.36]].forEach(([lx, lz]) =>
-      addMesh(new THREE.CylinderGeometry(0.035, 0.03, 0.17, 8), woodDarkMat, lx, 0.085, lz, chairGroup));
-    chairGroup.position.set(-2.3, 0, 2.3);
-    chairGroup.rotation.y = -2.214;   // angled ~37 degrees: faces the fire, leaves it visible from the room
-    roomGroup.add(chairGroup);
-
-    // Side table with reading lamp
-    addMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 20), woodMidMat, -2.95, 0.62, 3.25);
-    addMesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 8), woodDarkMat, -2.95, 0.3, 3.25);
-    addMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.03, 16), woodDarkMat, -2.95, 0.015, 3.25);
-    addMesh(new THREE.CylinderGeometry(0.075, 0.09, 0.2, 12), brassMat, -2.95, 0.745, 3.25);
-    addMesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 6), brassMat, -2.95, 0.95, 3.25);
-    const lampShade = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.21, 0.25, 20, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0xf0d9a0, emissive: 0xffb458, emissiveIntensity: 0.9, roughness: 0.8, side: THREE.DoubleSide })
-    );
-    lampShade.position.set(-2.95, 1.05, 3.25);
-    roomGroup.add(lampShade);
-    // A small stack of books on the table
-    addBox(0.26, 0.05, 0.19, new THREE.MeshStandardMaterial({ color: 0x2f4a6a }), -2.78, 0.675, 3.15);
-    addBox(0.24, 0.04, 0.17, new THREE.MeshStandardMaterial({ color: 0x7a2f2a }), -2.78, 0.72, 3.15);
-
-    // Potted plant by the bookcase
-    addMesh(new THREE.CylinderGeometry(0.2, 0.15, 0.36, 14), new THREE.MeshStandardMaterial({ color: 0xa4552f, roughness: 0.8 }), 3.2, 0.18, -2.6);
-    const leafMat = new THREE.MeshStandardMaterial({ color: 0x3f7a45, roughness: 0.85 });
-    [[0, 0.7, 0, 0.3], [-0.14, 0.55, 0.06, 0.2], [0.15, 0.6, -0.05, 0.22], [0.02, 0.95, 0.04, 0.2]].forEach(([dx, dy, dz, r]) =>
-      addMesh(new THREE.SphereGeometry(r, 10, 8), leafMat, 3.2 + dx, dy, -2.6 + dz));
-
-    // Floating Atmospheric Dust Motes (kept inside the room)
-    const motesGeo = new THREE.BufferGeometry();
-    const motesCount = 180;
-    const motesPos = new Float32Array(motesCount * 3);
-    for (let i = 0; i < motesCount * 3; i += 3) {
-      motesPos[i] = (Math.random() - 0.5) * 6;
-      motesPos[i + 1] = Math.random() * 2.9 + 0.2;
-      motesPos[i + 2] = (Math.random() - 0.5) * 7 + 0.8;
-    }
-    motesGeo.setAttribute('position', new THREE.BufferAttribute(motesPos, 3));
-    const motesMat = new THREE.PointsMaterial({
-      color: 0xffd9aa,
-      size: 0.035,
-      transparent: true,
-      opacity: 0.55
-    });
-    const dustMotes = new THREE.Points(motesGeo, motesMat);
-    scene.add(dustMotes);
-
-    // Fire + fireplace animation, called every frame from the render loop
-    function animateRoom(t) {
-      flames.forEach(f => {
-        const k = f.userData.phase;
-        const s = 0.85 + 0.25 * Math.sin(t * 9 + k) + 0.1 * Math.sin(t * 17 + k * 2.3);
-        f.scale.set(0.9 + 0.12 * Math.sin(t * 7 + k), s, 0.9 + 0.12 * Math.cos(t * 6 + k));
-        f.rotation.z = 0.08 * Math.sin(t * 5 + k);
-      });
-      const flick = 1.0 + 0.22 * Math.sin(t * 11) + 0.14 * Math.sin(t * 23 + 1.3) + 0.08 * Math.sin(t * 41);
-      fireLight.intensity = 1.5 * flick;
-      emberGlow.material.opacity = 0.3 + 0.1 * flick;
-    }
-
-    // --- 7. GRAND MULTI-TIER BOOKSHELF ARCHITECTURE ---
+    // --- 7. INTERACTIVE SHELVES (invisible touch targets; the visible joinery is in the room) ---
     const bookshelfGroup = new THREE.Group();
     bookshelfGroup.position.set(0, 0, -1.8);
     scene.add(bookshelfGroup);
 
-    const mahoganyMat = new THREE.MeshStandardMaterial({
-      map: TextureGenerator.generateMahoganyWood(),
-      roughness: 0.45,
-      metalness: 0.05
-    });
-
-    const SHELF_WIDTH = 4.2;
-    const SHELF_DEPTH = 0.55;
-    const TIER_HEIGHTS = [2.2, 1.4, 0.6]; // Tier 0 (Top), Tier 1 (Mid), Tier 2 (Bottom)
-
-    // Backing panel of the bookcase
-    const bookcaseBack = new THREE.Mesh(
-      new THREE.BoxGeometry(SHELF_WIDTH, 2.9, 0.08),
-      mahoganyMat
-    );
-    bookcaseBack.position.set(0, 1.45, -SHELF_DEPTH / 2);
-    bookcaseBack.receiveShadow = true;
-    bookshelfGroup.add(bookcaseBack);
-
-    // Outer frame vertical pilasters
-    const leftPilaster = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.1, SHELF_DEPTH + 0.06), mahoganyMat);
-    leftPilaster.position.set(-SHELF_WIDTH / 2, 1.45, 0);
-    const rightPilaster = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.1, SHELF_DEPTH + 0.06), mahoganyMat);
-    rightPilaster.position.set(SHELF_WIDTH / 2, 1.45, 0);
-    bookshelfGroup.add(leftPilaster, rightPilaster);
-
-    // Top crown molding
-    const crownMolding = new THREE.Mesh(new THREE.BoxGeometry(SHELF_WIDTH + 0.3, 0.2, SHELF_DEPTH + 0.12), mahoganyMat);
-    crownMolding.position.set(0, 2.95, 0);
-    bookshelfGroup.add(crownMolding);
-
-    // Interactive shelf tiers & boards
     const shelfTiers = []; // Groups for each tier
     const clickableShelves = []; // Raycast targets for shelf activation
+    const touchZoneMat = new THREE.MeshBasicMaterial({ visible: false });
 
     TIER_HEIGHTS.forEach((tierY, tierIndex) => {
-      // Horizontal shelf board
-      const shelfBoard = new THREE.Mesh(
-        new THREE.BoxGeometry(SHELF_WIDTH, 0.08, SHELF_DEPTH),
-        mahoganyMat
-      );
+      const shelfBoard = new THREE.Mesh(new THREE.BoxGeometry(SHELF_WIDTH, 0.08, SHELF_DEPTH), touchZoneMat);
       shelfBoard.position.set(0, tierY - 0.04, 0);
-      shelfBoard.receiveShadow = true;
-      shelfBoard.castShadow = true;
       shelfBoard.userData = { isShelfTier: true, tierIndex: tierIndex };
       bookshelfGroup.add(shelfBoard);
       clickableShelves.push(shelfBoard);
 
-      // Invisible touch zone covering the whole shelf section, so touching anywhere
-      // on it (books, gaps, filler) counts as touching the shelf.
-      const shelfZone = new THREE.Mesh(
-        new THREE.BoxGeometry(SHELF_WIDTH, 0.5, SHELF_DEPTH - 0.05),
-        new THREE.MeshBasicMaterial({ visible: false })
-      );
+      // Touch zone covering the whole shelf section, so touching anywhere on it
+      // (books, gaps, filler) counts as touching the shelf.
+      const shelfZone = new THREE.Mesh(new THREE.BoxGeometry(SHELF_WIDTH, 0.5, SHELF_DEPTH - 0.05), touchZoneMat);
       shelfZone.position.set(0, tierY + 0.25, 0);
       shelfZone.userData = { isShelfTier: true, tierIndex: tierIndex };
       bookshelfGroup.add(shelfZone);
       clickableShelves.push(shelfZone);
 
-      // Tier container group (houses the 4 hero books + decorative filler)
+      // Tier container group (houses the 4 hero books)
       const tierGroup = new THREE.Group();
       tierGroup.position.set(0, tierY, 0);
       tierGroup.userData = { tierIndex: tierIndex, isActivated: false };
       bookshelfGroup.add(tierGroup);
       shelfTiers.push(tierGroup);
     });
-
-    // --- 8. INSTANCED DECORATIVE BOOKS (High Performance 90 FPS VR Spines) ---
-    // Fill the shelves with hundreds of background vintage books
-    const instancedCount = 120;
-    const instBookGeo = new THREE.BoxGeometry(0.06, 0.38, 0.28);
-    const instBookMat = new THREE.MeshStandardMaterial({
-      roughness: 0.6,
-      metalness: 0.1
-    });
-    const instancedBooks = new THREE.InstancedMesh(instBookGeo, instBookMat, instancedCount);
-    instancedBooks.castShadow = true;
-    instancedBooks.receiveShadow = true;
-
-    const dummy = new THREE.Object3D();
-    const vintageColors = [0x5c1d1d, 0x1d3c2a, 0x1d2c47, 0x3d2b1f, 0x4a3b2c, 0x2b1d3a, 0x614022];
-
-    let instIdx = 0;
-    TIER_HEIGHTS.forEach((tierY, tierIdx) => {
-      for (let i = 0; i < 40; i++) {
-        const x = -1.85 + (i / 40) * 3.7;
-        // Skip spaces where the 4 hero books sit
-        const isNearHero = [-1.1, -0.37, 0.37, 1.1].some(hx => Math.abs(x - hx) < 0.14);
-        if (isNearHero) continue;
-
-        const hVar = 0.85 + Math.random() * 0.25;
-        dummy.scale.set(0.7 + Math.random() * 0.6, hVar, 0.9 + Math.random() * 0.2);
-        dummy.position.set(x, tierY + 0.19 * hVar, -0.06 + (Math.random() - 0.5) * 0.04);
-        dummy.rotation.y = (Math.random() - 0.5) * 0.05;
-        dummy.updateMatrix();
-
-        instancedBooks.setMatrixAt(instIdx, dummy.matrix);
-        const col = new THREE.Color(vintageColors[Math.floor(Math.random() * vintageColors.length)]);
-        instancedBooks.setColorAt(instIdx, col);
-        instIdx++;
-      }
-    });
-    instancedBooks.instanceMatrix.needsUpdate = true;
-    if (instancedBooks.instanceColor) instancedBooks.instanceColor.needsUpdate = true;
-    bookshelfGroup.add(instancedBooks);
 
     // --- 9. HERO INTERACTIVE 3D BOOKS GENERATION ---
     const heroBooks = [];
@@ -1708,7 +1171,7 @@
     // Dimensions for hero books
     const BOOK_W = 0.28; // ~0.67 aspect against 0.42 height, matching Gutenberg cover art
     const BOOK_H = 0.42;
-    const BOOK_D = 0.34;
+    const BOOK_D = 0.06; // a real hardback's thickness; the book stands cover-out at the shelf front
 
     // R2: real cover art. gutenberg.org sends no CORS headers, so WebGL cannot use its
     // images directly; the covers are saved in /covers/<gutenbergId>.jpg (same origin).
@@ -1731,6 +1194,7 @@
             tex.offset.y = (1 - tex.repeat.y) / 2;
           }
           tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          tex.encoding = THREE.sRGBEncoding;
           const generated = material.map;
           material.map = tex;
           material.needsUpdate = true;
@@ -1806,8 +1270,8 @@
       const coverTexture = TextureGenerator.generateBookCover(bookData);
       const spineMat = new THREE.MeshStandardMaterial({
         color: bookData.spineColor,
-        roughness: 0.5,
-        metalness: 0.1
+        roughness: 0.55,
+        envMapIntensity: 0.6
       });
       const pagesTrimMat = new THREE.MeshStandardMaterial({
         color: 0xede4ce,
@@ -1815,18 +1279,19 @@
       });
       const frontCoverMat = new THREE.MeshStandardMaterial({
         map: coverTexture,
-        roughness: 0.45
+        roughness: 0.5,
+        envMapIntensity: 0.35
       });
       loadRealCover(bookData, frontCoverMat);
 
       // Material index mapping for BoxGeometry: [right, left, top, bottom, front, back]
       const bookMaterials = [
-        frontCoverMat, // Right (front cover when facing viewer)
+        pagesTrimMat,  // Right (fore-edge of the pages)
         spineMat,      // Left (spine)
         pagesTrimMat,  // Top
         pagesTrimMat,  // Bottom
-        frontCoverMat, // Front
-        spineMat       // Back
+        frontCoverMat, // Front (cover art, faces the room)
+        spineMat       // Back board
       ];
 
       const bookMesh = new THREE.Mesh(bookBlockGeo, bookMaterials);
@@ -1838,7 +1303,7 @@
       // Coordinates on shelf: 4 books per shelf
       const xPositions = [-1.1, -0.37, 0.37, 1.1];
       const posX = xPositions[bookData.shelfPosition];
-      const restingZ = 0.0;
+      const restingZ = SHELF_DEPTH / 2 - BOOK_D / 2 - 0.02; // cover just behind the shelf front
 
       bookGroup.position.set(posX, 0, restingZ);
       bookGroup.userData = {
@@ -1888,6 +1353,7 @@
     // 3. Base Left Page (displays current left page canvas texture)
     const leftPageMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
+      toneMapped: false,
       side: THREE.FrontSide
     });
     const leftPageMesh = new THREE.Mesh(
@@ -1901,6 +1367,7 @@
     // 4. Base Right Page (displays current right page canvas texture)
     const rightPageMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
+      toneMapped: false,
       side: THREE.FrontSide
     });
     const rightPageMesh = new THREE.Mesh(
@@ -1919,10 +1386,12 @@
 
     const flipPageMatFront = new THREE.MeshBasicMaterial({
       color: 0xffffff,
+      toneMapped: false,
       side: THREE.FrontSide
     });
     const flipPageMatBack = new THREE.MeshBasicMaterial({
       color: 0xffffff,
+      toneMapped: false,
       side: THREE.FrontSide
     });
 
@@ -2454,15 +1923,9 @@
     });
 
     // Where the viewer may stand: inside the room, in front of the bookcase, clear of furniture.
-    const TELEPORT_BOUNDS = { xMin: -3.5, xMax: 3.5, zMin: -1.0, zMax: 4.1 };
-    const TELEPORT_BLOCK_CIRCLES = [
-      { x: -2.3, z: 2.3, r: 0.75 },   // armchair
-      { x: -2.95, z: 3.25, r: 0.45 }  // side table + lamp
-    ];
-    const TELEPORT_BLOCK_RECTS = [
-      { x0: -4.0, x1: -3.0, z0: -0.4, z1: 2.4 }, // fireplace hearth
-      { x0: 3.3, x1: 4.0, z0: -0.4, z1: 1.4 }    // window seat
-    ];
+    const TELEPORT_BOUNDS = LIBRARY.teleport.bounds;
+    const TELEPORT_BLOCK_CIRCLES = LIBRARY.teleport.circles;   // chairs, side table, globe, bust
+    const TELEPORT_BLOCK_RECTS = LIBRARY.teleport.rects;       // hearth, desk, sofa, ladder
     function isTeleportSpotValid(x, z) {
       const B = TELEPORT_BOUNDS;
       if (x < B.xMin || x > B.xMax || z < B.zMin || z > B.zMax) return false;
@@ -2764,23 +2227,15 @@
 
     // --- 16. ANIMATION & RENDER LOOP (WebXR Compatible) ---
     const clock = new THREE.Clock();
-    const CAMERA_MIN = new THREE.Vector3(ROOM.xMin + 0.4, 0.4, ROOM.zMin + 0.7);
-    const CAMERA_MAX = new THREE.Vector3(ROOM.xMax - 0.4, ROOM.h - 0.3, ROOM.zMax - 0.4);
-    const BOOKCASE_HALF_WIDTH = 2.45;   // 4.2 m case + pilasters
-    const BOOKCASE_FRONT_LIMIT = -1.15; // shelf front is at z = -1.525; keep a 0.37 m margin
+    const CAMERA_MIN = LIBRARY.camera.min;
+    const CAMERA_MAX = LIBRARY.camera.max;
+    const BOOKCASE_HALF_WIDTH = 2.6;    // 4.2 m case + columns
+    const BOOKCASE_FRONT_LIMIT = -1.05; // shelf front is at z = -1.525, column pedestals at -1.2
 
     function renderLoop(timestamp, frame) {
       const delta = clock.getDelta();
 
-      // Gentle floating motion for dust motes
-      const positions = dustMotes.geometry.attributes.position.array;
-      for (let i = 1; i < positions.length; i += 3) {
-        positions[i] -= delta * 0.04;
-        if (positions[i] < 0.2) positions[i] = 3.1;
-      }
-      dustMotes.geometry.attributes.position.needsUpdate = true;
-
-      // Fireplace flames + flickering light
+      // Fire, candles, dust in the sun shafts
       animateRoom(clock.elapsedTime);
 
       // VR teleport aiming (no-op outside a headset)
@@ -2818,6 +2273,23 @@
 
       renderer.render(scene, camera);
     }
+
+    // Colour management for materials made before the sRGB pipeline (hero books, reader, VR UI):
+    // their hex colours and canvas textures are sRGB, so convert once. The room is already managed.
+    (function manage(o) {
+      if (o.userData && o.userData.colorManaged) return;
+      const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      mats.forEach((m) => {
+        if (m.userData.colorManaged) return;
+        m.userData.colorManaged = true;
+        if (m.color) m.color.convertSRGBToLinear();
+        if (m.emissive) m.emissive.convertSRGBToLinear();
+        if (m.map) { m.map.encoding = THREE.sRGBEncoding; m.map.needsUpdate = true; }
+        m.needsUpdate = true;
+      });
+      o.children.forEach(manage);
+    })(scene);
+    LIBRARY.refreshEnvironment();   // image-based lighting captured from the finished room
 
     // Start WebXR-ready render loop
     renderer.setAnimationLoop(renderLoop);

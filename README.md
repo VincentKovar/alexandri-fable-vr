@@ -50,7 +50,12 @@ npx tsx --test src/library/reader-logic.test.ts
 ## Project layout
 
 ```
-index.html              the whole app (scene, room, interaction, reader, VR)
+index.html              the app: book data, interaction, reader, VR, controls
+js/library-kit.js       scene toolkit: geometry batching, materials, generated textures
+js/library-room.js      the room: bookcases, fireplace, windows, furniture, lights, paintings
+books/excerpts.js       opening text of each book (paginated at runtime)
+textures/               CC0 material maps from Poly Haven (see textures/CREDITS.md)
+images/paintings/       public-domain / CC0 images of great library interiors (see CREDITS.md there)
 covers/<gutenbergId>.jpg  local cover art (gutenberg.org sends no CORS headers)
 images/                 style reference photos (not used in the scene)
 docs/                   iteration specs
@@ -80,7 +85,7 @@ src/library/            typed, unit-tested book data + pagination logic (mirror 
 | 4 | Shelf, then cover, then open in two actions | **Pass.** Two real clicks opened a book; no extra buttons |
 | 5 | Teleport to each bookcase and open a book in a Quest browser | **Not run.** Needs a headset |
 | 6 | Cold-start stranger completes the flow in under 60 s | **Not run.** Needs a person |
-| 7 | 72 fps on Quest 2 (OVR Metrics) | **Not run.** Needs a headset. Desktop frame: 123 draw calls, 5 lights, 1 shadow-casting light |
+| 7 | 72 fps on Quest 2 (OVR Metrics) | **Not run.** Needs a headset. Desktop frame after the graphics upgrade: about 77 draw calls, 49,000 triangles, 5 lights plus a hemisphere light, 1 shadow-casting light |
 
 ## Iteration log
 
@@ -126,6 +131,19 @@ Built in the spec's order, one commit per step: plaques and presets, interaction
 - **Shelf labels removed.** "Victorian Novels", "Gothic & Speculative" and "World Classics" did not describe the books on those shelves, so the plaques are gone. Shelf grouping returns in a later phase, driven by real metadata (see `docs/PRD.md`).
 - **Fuller pages.** Each page held about one paragraph (about 60 words). Each book now carries about 2,000 to 3,300 words of its real opening from Project Gutenberg (`books/excerpts.js`), paginated at runtime to fill each page (about 250 to 350 words). If that file is missing the old short pages are used.
 
+**Graphics upgrade (2026-11-10)**
+
+The room was rebuilt as a panelled private library. Checked on desktop only; not yet seen in a headset.
+
+- **Architecture.** The whole back wall is built-in bookcases: the interactive bay in the centre between green marble columns with gilt capitals, a lettered frieze, side bays and a rolling ladder. Bookcases also flank a stone fireplace on the left wall. Coffered ceiling with gilt rosettes, a ceiling fresco and a brass chandelier. Two arched windows with velvet curtains on the right wall.
+- **Light.** Late-afternoon sun through the windows is the one shadow-casting light, so window-shaped light falls across the floor and furniture. Fire, candles and lamps glow; faint sun shafts and dust. The room is captured once into an environment map so brass, gilt, marble and the floor reflect it. Output is colour-managed (sRGB) with filmic tone mapping.
+- **Materials.** Photo-scanned CC0 maps (colour, normal, roughness) for parquet, wood, leather, stone, velvet and wall fabric. The rug, window view, book spines and ceiling rosettes are generated in code.
+- **Books.** About 1,050 decorative books with varied leather spines, gilt bands and labels, drawn as one instanced mesh. The 12 real books are now proper hardback proportions and stand cover-out at the shelf front.
+- **Paintings.** Nine framed images of great library interiors (Vienna, Strahov, Melk, Peabody, Sainte-Geneviève, Harewood, Boullée's design, the Library of Congress) and a Vienna dome fresco on the ceiling. All are Public Domain or CC0 on Wikimedia Commons; credits are in `images/paintings/CREDITS.md`.
+- **Furniture.** Two wing chairs and a lamp table by the fire, a Chesterfield sofa under the gallery wall, a partner desk with a banker's lamp, a floor globe, an urn on a pedestal, a Persian rug.
+- **Cost.** About 77 draw calls and 49,000 triangles (was 123 draw calls), because static geometry is merged per material. Five lights plus one hemisphere light, one shadow map. Around 6.5 MB of images and textures were added to the repo.
+- **Room size changed.** Ceiling is now 4 m and the back wall moved to the bookcase (z = -2.1). Camera limits and VR teleport zones were updated to match the new furniture.
+
 **Planned next: flat reader (decided 2026-11-10, not built yet)**
 
 Today the opened book is a tilted 3D object, which skews the pages and the text. The plan is for an opened book to read like iPad or Apple Books: flat to the screen, squared to the viewer.
@@ -152,9 +170,10 @@ See `docs/PRD.md` (section 7.3 and Phase 0b).
 
 - **Excerpts, not full books.** Each book is an opening excerpt of 7 to 12 pages. Full-length reading is a later phase.
 
-- **Quest 2 is untested:** frame rate, teleport on device (the thumbstick is assumed to be `axes[2]`/`axes[3]`), and how the arc line looks in the headset.
+- **Quest 2 is untested, and the new room is heavier on texture memory** (about 30 texture maps at 1K). A `vr` quality tier (lower pixel ratio, smaller shadow map, fewer dust motes) switches on for headset browsers, but nothing is measured. Untested: frame rate, teleport on device (the thumbstick is assumed to be `axes[2]`/`axes[3]`), and how the arc line looks in the headset.
 - **Blank first load:** the iteration 1 screenshot `r1-desktop.png` showed an empty canvas. It could not be reproduced in this iteration (every load rendered); the screenshot is gone with `.aistudio/`. Worth checking on a clean browser profile.
 - **Reference photos.** `images/NY-rose-readingroom.png` has now been uploaded to the repo (it was an empty file). The photos are style guidance only and are not used in the scene.
 - **`package.json` is still the AI Studio scaffold** (name `react-example`; React, Tailwind, Express and `@google/genai` dependencies). `index.html` uses none of them. `.env.example`, `metadata.json` and `vite.config.ts` also carry AI Studio and Gemini text. Pruning these would be a good small cleanup.
 - **`src/library/reader-logic.ts` is not used by `index.html`.** It is a typed copy of the book data, kept because it has unit tests.
+- **Looking up on desktop.** The orbit camera cannot tilt far enough to see the ceiling fresco well; FPS Walk and VR can.
 - **Cover art:** the covers come from Project Gutenberg's generated cover pages. Check their terms before publishing the project publicly.
